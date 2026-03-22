@@ -1,0 +1,244 @@
+{
+  "design": "LUPA 48VGen",
+  "version": "1.4",
+  "parts": [
+    {
+      "part_number": "KW47B42ZB7AFTB",
+      "manufacturer": "NXP",
+      "quantity": 1,
+      "reference": "",
+      "description": "Bluetooth Low Energy 6.0 MCU, 48-pin QFN"
+    },
+    {
+      "part_number": "NCJ3310",
+      "manufacturer": "NXP",
+      "quantity": 1,
+      "reference": "",
+      "description": "Type 5 NFC Tag"
+    },
+    {
+      "part_number": "TCAL9539-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "16-bit I2C I/O-Expander"
+    },
+    {
+      "part_number": "ADS7138-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "8-Kanal 12-bit ADC + GPIO"
+    },
+    {
+      "part_number": "DAC43701-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "8-bit Smart DAC"
+    },
+    {
+      "part_number": "TCAN1472V-Q1",
+      "manufacturer": "TI",
+      "quantity": 2,
+      "reference": "",
+      "description": "CAN-FD SIC Transceiver"
+    },
+    {
+      "part_number": "ESD2CANFD24-Q1",
+      "manufacturer": "TI",
+      "quantity": 2,
+      "reference": "",
+      "description": "CAN ESD-Schutz"
+    },
+    {
+      "part_number": "TLIN4029A-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "LIN Transceiver"
+    },
+    {
+      "part_number": "ESD1LIN24-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "LIN ESD-Schutz"
+    },
+    {
+      "part_number": "LMR38020-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "Buck-Regler"
+    },
+    {
+      "part_number": "TPS61041-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "Boost-Regler"
+    },
+    {
+      "part_number": "LM2775-Q1",
+      "manufacturer": "TI",
+      "quantity": 2,
+      "reference": "",
+      "description": "Switched-Capacitor Boost Regulator"
+    },
+    {
+      "part_number": "LP5907-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "250-mA Low-Noise LDO"
+    },
+    {
+      "part_number": "TPS4800-Q1",
+      "manufacturer": "TI",
+      "quantity": 2,
+      "reference": "",
+      "description": "High-Side Driver / Protection Controller"
+    },
+    {
+      "part_number": "IAUTN12S5N018T",
+      "manufacturer": "Infineon",
+      "quantity": 11,
+      "reference": "",
+      "description": "120V N-MOSFET, 1.8 mΩ"
+    },
+    {
+      "part_number": "CSS2H-2512K-2L00F",
+      "manufacturer": "Bourns",
+      "quantity": 3,
+      "reference": "",
+      "description": "2.0 mΩ Shunt"
+    },
+    {
+      "part_number": "CSS2H-2512R-L500F",
+      "manufacturer": "Bourns",
+      "quantity": 7,
+      "reference": "",
+      "description": "0.5 mΩ Shunt"
+    },
+    {
+      "part_number": "INA241A4-Q1",
+      "manufacturer": "TI",
+      "quantity": 3,
+      "reference": "",
+      "description": "Current Sense Amplifier (Gain 100)"
+    },
+    {
+      "part_number": "INA241A3-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "Current Sense Amplifier (Gain 50)"
+    },
+    {
+      "part_number": "TLV365-Q1",
+      "manufacturer": "TI",
+      "quantity": 8,
+      "reference": "",
+      "description": "Rail-to-Rail OpAmp"
+    },
+    {
+      "part_number": "UCC27302A-Q1",
+      "manufacturer": "TI",
+      "quantity": 2,
+      "reference": "",
+      "description": "Half-Bridge Driver"
+    },
+    {
+      "part_number": "TLC3555-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "High-Speed CMOS Timer"
+    },
+    {
+      "part_number": "UCC57148-Q1",
+      "manufacturer": "TI",
+      "quantity": 2,
+      "reference": "",
+      "description": "Low-Side Gate Driver"
+    },
+    {
+      "part_number": "DMTH12H007SPSWQ",
+      "manufacturer": "Diodes Inc.",
+      "quantity": 4,
+      "reference": "",
+      "description": "120V N-MOSFET"
+    },
+    {
+      "part_number": "SM8S64CA",
+      "manufacturer": "Vishay",
+      "quantity": 6,
+      "reference": "",
+      "description": "64V / 5000W TVS"
+    },
+    {
+      "part_number": "SMBJ70CA",
+      "manufacturer": "Littelfuse",
+      "quantity": 6,
+      "reference": "",
+      "description": "70V / 600W TVS"
+    },
+    {
+      "part_number": "BSP316P",
+      "manufacturer": "Infineon",
+      "quantity": 1,
+      "reference": "",
+      "description": "P-MOSFET, -100V"
+    },
+    {
+      "part_number": "SMMBT3904L",
+      "manufacturer": "onsemi",
+      "quantity": 1,
+      "reference": "",
+      "description": "NPN-BJT"
+    },
+    {
+      "part_number": "SMMBT3904WT1G",
+      "manufacturer": "onsemi",
+      "quantity": 10,
+      "reference": "",
+      "description": "NPN-Transistor als Remote-Temperatursensor"
+    },
+    {
+      "part_number": "TMP423-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "3-Kanal Remote-/Lokaler Temperatursensor (im I2C-Adressplan auch als TMP423A-Q1 erwähnt)"
+    },
+    {
+      "part_number": "TMP422-Q1",
+      "manufacturer": "TI",
+      "quantity": 3,
+      "reference": "",
+      "description": "2-Kanal Remote-/Lokaler Temperatursensor"
+    },
+    {
+      "part_number": "TMP421-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "1-Kanal Remote-/Lokaler Temperatursensor"
+    },
+    {
+      "part_number": "LMT01-Q1",
+      "manufacturer": "TI",
+      "quantity": 1,
+      "reference": "",
+      "description": "Digitaler pulse-counting Temperatursensor"
+    },
+    {
+      "part_number": "AQ4020-01FTG",
+      "manufacturer": "Littelfuse",
+      "quantity": 1,
+      "reference": "",
+      "description": "ESD-Schutzdiode für LMT01 Sensor Return"
+    }
+  ]
+}

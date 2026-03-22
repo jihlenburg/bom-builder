@@ -1,0 +1,27 @@
+{
+  "design": "Power Supply Rev A",
+  "version": "1.0",
+  "parts": [
+    {
+      "part_number": "RC0402FR-0710KL",
+      "manufacturer": "Yageo",
+      "quantity": 4,
+      "reference": "R1,R2,R3,R4",
+      "description": "10kΩ 0402 1% resistor"
+    },
+    {
+      "part_number": "GRM155R71C104KA88D",
+      "manufacturer": "Murata",
+      "quantity": 2,
+      "reference": "C1,C2",
+      "description": "100nF 0402 X7R capacitor"
+    },
+    {
+      "part_number": "LM3670MFX-3.3/NOPB",
+      "manufacturer": "Texas Instruments",
+      "quantity": 1,
+      "reference": "U1",
+      "description": "3.3V 350mA step-down converter"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+# Local environment and developer tooling
+.env
+.env.*
+!.env.example
+.claude/
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated BOM outputs
+bom_output.*
+test_output.*
+*_output.json
+*_output.csv
+*_output.xlsx
+
+# Local cache and resolver state
+*.sqlite3
+resolutions.json
+
+# Generated documentation
+docs/_build/
+docs/api/generated/
+
+# OS-specific junk
+.DS_Store

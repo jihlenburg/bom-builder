@@ -1,0 +1,273 @@
+# Package patterns and vendor-specific MPN encoding schemes.
+#
+# This file is loaded by package.py to extract package type and pin count
+# from Mouser part data. It can be extended without modifying Python code.
+#
+# Structure:
+#   patterns:  Regex patterns matched against Mouser descriptions and image URLs.
+#              Each entry has: regex, name (with optional {0} for captured group), pins (null = from regex).
+#   ti_codes:  Texas Instruments package codes embedded in MPNs (e.g. "DCN" = SOT-23-8).
+#              See TI's packaging designator guide for the full list.
+#   stm_codes: STMicroelectronics package letter codes (e.g. "T" = LQFP).
+#              Used in the second-to-last position of STM32 part numbers.
+
+# ---------------------------------------------------------------------------
+# Generic package patterns (matched against description text and image URLs)
+# ---------------------------------------------------------------------------
+# Ordered from most specific to least specific to avoid false matches.
+# The regex is applied case-insensitively.
+# If "pins" is null, the pin count is extracted from regex capture group 1.
+
+patterns:
+  # QFP variants (quad flat package)
+  - regex: '\bLQFP[- ]?(\d+)\b'
+    name: "LQFP-{0}"
+    pins: null
+  - regex: '\bTQFP[- ]?(\d+)\b'
+    name: "TQFP-{0}"
+    pins: null
+  - regex: '\bQFP[- ]?(\d+)\b'
+    name: "QFP-{0}"
+    pins: null
+  - regex: '\bQFN[- ]?(\d+)\b'
+    name: "QFN-{0}"
+    pins: null
+  - regex: '\bWQFN[- ]?(\d+)\b'
+    name: "WQFN-{0}"
+    pins: null
+  - regex: '\bDFN[- ]?(\d+)\b'
+    name: "DFN-{0}"
+    pins: null
+  - regex: '\bBGA[- ]?(\d+)\b'
+    name: "BGA-{0}"
+    pins: null
+  - regex: '\bWLCSP[- ]?(\d+)\b'
+    name: "WLCSP-{0}"
+    pins: null
+
+  # SOIC / SOP variants (small outline)
+  # SOIC must come before SO to avoid SO matching "SOIC" partially
+  - regex: '\b(\d+)[- ]?SOIC\b'
+    name: "SOIC-{0}"
+    pins: null
+  - regex: '\bSOIC[- ]?(\d+)\b'
+    name: "SOIC-{0}"
+    pins: null
+  - regex: '\bHSOIC[- ]?(\d+)\b'
+    name: "HSOIC-{0}"
+    pins: null
+  - regex: '\bSOP[- ]?(\d+)\b'
+    name: "SOP-{0}"
+    pins: null
+  - regex: '\bSSOP[- ]?(\d+)\b'
+    name: "SSOP-{0}"
+    pins: null
+  - regex: '\bTSSOP[- ]?(\d+)\b'
+    name: "TSSOP-{0}"
+    pins: null
+  - regex: '\b(\d+)[- ]?MSOP\b'
+    name: "MSOP-{0}"
+    pins: null
+  - regex: '\bMSOP[- ]?(\d+)\b'
+    name: "MSOP-{0}"
+    pins: null
+  - regex: '\bVSSOP[- ]?(\d+)\b'
+    name: "VSSOP-{0}"
+    pins: null
+  - regex: '\bVSON[- ]?(\d+)\b'
+    name: "VSON-{0}"
+    pins: null
+  - regex: '\bSON[- ]?(\d+)\b'
+    name: "SON-{0}"
+    pins: null
+  - regex: '\bWSON[- ]?(\d+)\b'
+    name: "WSON-{0}"
+    pins: null
+  - regex: '\bX2SON[- ]?(\d+)\b'
+    name: "X2SON-{0}"
+    pins: null
+  - regex: '\bSO[- ]?(\d+)\b'
+    name: "SO-{0}"
+    pins: null
+
+  # SOT variants (small outline transistor)
+  # SOT-23-N (with pin count) must come before bare SOT-23
+  - regex: '\b(\d+)[- ]?SOT[- ]?23\b'
+    name: "SOT-23-{0}"
+    pins: null
+  - regex: '\bSOT[- ]?23[- ]?(\d+)\b'
+    name: "SOT-23-{0}"
+    pins: null
+  - regex: '\bSOT[- ]?23\b'
+    name: "SOT-23"
+    pins: 3
+  - regex: '\bSOT[- ]?223\b'
+    name: "SOT-223"
+    pins: 4
+  - regex: '\bSOT[- ]?363\b'
+    name: "SOT-363"
+    pins: 6
+  - regex: '\bSOT[- ]?563\b'
+    name: "SOT-563"
+    pins: 6
+  - regex: '\bSOT[- ]?89\b'
+    name: "SOT-89"
+    pins: 3
+  - regex: '\bSC[- ]?70[- ]?(\d+)\b'
+    name: "SC-70-{0}"
+    pins: null
+  - regex: '\bSC[- ]?70\b'
+    name: "SC-70"
+    pins: 5
+
+  # Chip passives — imperial sizes (2-terminal components)
+  - regex: '\b01005\b'
+    name: "01005"
+    pins: 2
+  - regex: '\b0201\b'
+    name: "0201"
+    pins: 2
+  - regex: '\b0402\b'
+    name: "0402"
+    pins: 2
+  - regex: '\b0603\b'
+    name: "0603"
+    pins: 2
+  - regex: '\b0805\b'
+    name: "0805"
+    pins: 2
+  - regex: '\b1206\b'
+    name: "1206"
+    pins: 2
+  - regex: '\b1210\b'
+    name: "1210"
+    pins: 2
+  - regex: '\b1812\b'
+    name: "1812"
+    pins: 2
+  - regex: '\b2010\b'
+    name: "2010"
+    pins: 2
+  - regex: '\b2512\b'
+    name: "2512"
+    pins: 2
+
+  # DIP (dual in-line package)
+  - regex: '\bDIP[- ]?(\d+)\b'
+    name: "DIP-{0}"
+    pins: null
+  - regex: '\bPDIP[- ]?(\d+)\b'
+    name: "PDIP-{0}"
+    pins: null
+
+  # TO packages (through-hole power)
+  - regex: '\b(\d+)[- ]?TO[- ]?92\b'
+    name: "TO-92"
+    pins: null
+  - regex: '\bTO[- ]?220\b'
+    name: "TO-220"
+    pins: 3
+  - regex: '\bTO[- ]?252\b'
+    name: "TO-252 (DPAK)"
+    pins: 3
+  - regex: '\bTO[- ]?263\b'
+    name: "TO-263 (D2PAK)"
+    pins: 3
+  - regex: '\bTO[- ]?92\b'
+    name: "TO-92"
+    pins: 3
+  - regex: '\bD2PAK\b'
+    name: "TO-263 (D2PAK)"
+    pins: 3
+  - regex: '\bDPAK\b'
+    name: "TO-252 (DPAK)"
+    pins: 3
+
+# ---------------------------------------------------------------------------
+# Texas Instruments MPN package codes
+# ---------------------------------------------------------------------------
+# TI embeds a 2-3 letter package designator in the orderable part number.
+# Example: TMP423A-Q-DCN-R-Q1 → "DCN" = SOT-23-8 (8 pins)
+# See: https://www.ti.com/lit/ml/sprsp48/sprsp48.pdf
+#
+# Format: CODE: [package_name, pin_count]
+# Pin count can be null if it varies (e.g. TSSOP comes in multiple pin counts).
+
+ti_codes:
+  DCN: ["SOT-23-8", 8]
+  DCT: ["SOT-23-8", 8]
+  DCK: ["SC-70-5", 5]
+  DCR: ["SOT-6X", 6]
+  DR:  ["SOIC-8", 8]
+  DRC: ["VSON-10", 10]
+  DRB: ["VSON-8", 8]
+  DBV: ["SOT-23-5", 5]
+  DDF: ["SOT-23-8", 8]
+  DGK: ["MSOP-8", 8]
+  DGS: ["MSOP-10", 10]
+  DGQ: ["MSOP-10", 10]
+  DGX: ["VSSOP-19", 19]
+  DDA: ["HSOIC-8", 8]
+  DQN: ["X2SON-4", 4]
+  DQX: ["WSON-2", 2]
+  PW:  ["TSSOP", null]
+  PWR: ["TSSOP", null]
+  RGE: ["QFN-24", 24]
+  RGY: ["QFN-14", 14]
+  RHA: ["QFN-40", 40]
+  RSA: ["QFN-40", 40]
+  RHB: ["QFN-32", 32]
+  RTE: ["WQFN-16", 16]
+  RTJ: ["QFN-20", 20]
+  ZXK: ["DSBGA-9", 9]
+  MF:  ["SOT-23-5", 5]
+  MFX: ["SOT-23-5", 5]
+  DGN: ["MSOP-8", 8]
+  DSG: ["SOT-23-5", 5]
+  DRB: ["SON-8", 8]
+  DRG: ["SON-8", 8]
+  NGD: ["QFN-16", 16]
+  RSB: ["QFN-40", 40]
+
+# ---------------------------------------------------------------------------
+# STMicroelectronics MPN package codes
+# ---------------------------------------------------------------------------
+# STM32 part numbers encode the package in the second-to-last character.
+# Example: STM32F405RGT6
+#   STM32  = family
+#   F405   = subfamily
+#   R      = pin count (64 pins)
+#   G      = flash size (1 MB)
+#   T      = package type (LQFP)  ← this is what we decode here
+#   6      = temperature range
+#
+# Format: LETTER: [package_name, pin_count_or_null]
+# The pin count comes from the pin count letter (R=64, V=100, etc.),
+# not from this table — this table only identifies the package TYPE.
+
+stm_codes:
+  T: ["LQFP", null]
+  U: ["UFQFPN", null]
+  Y: ["WLCSP", null]
+  H: ["UFBGA", null]
+  C: ["UFQFPN-48", 48]
+  R: ["LQFP-64", 64]
+  V: ["LQFP-100", 100]
+  Z: ["LQFP-144", 144]
+  I: ["LQFP-176", 176]
+  A: ["UFBGA-169", 169]
+
+# ---------------------------------------------------------------------------
+# STMicroelectronics pin count letter mapping
+# ---------------------------------------------------------------------------
+# Used alongside stm_codes to determine the full package designation.
+# Example: "R" in STM32F405RGT6 means 64 pins.
+
+stm_pin_counts:
+  C: 48
+  R: 64
+  V: 100
+  Z: 144
+  I: 176
+  A: 169
+  B: 208

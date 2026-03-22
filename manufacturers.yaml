@@ -1,0 +1,75 @@
+# Manufacturer name aliases for Mouser lookup matching.
+# Each entry maps a name to a list of known aliases.
+# Matching is case-insensitive and bidirectional.
+
+Texas Instruments:
+  - TI
+
+NXP Semiconductors:
+  - NXP
+  - NXP USA
+
+Infineon Technologies:
+  - Infineon
+
+STMicroelectronics:
+  - ST
+
+Diodes Incorporated:
+  - Diodes Inc
+  - Diodes Inc.
+
+ON Semiconductor:
+  - onsemi
+
+Microchip Technology:
+  - Microchip
+
+Analog Devices:
+  - ADI
+  - Maxim Integrated
+
+Vishay:
+  - Vishay General Semiconductor
+  - Vishay Intertechnology
+  - Vishay Dale
+  - Vishay Beyschlag
+
+Murata:
+  - Murata Electronics
+  - Murata Manufacturing
+
+Littelfuse:
+  - Littelfuse Inc
+
+Bourns:
+  - Bourns Inc
+
+Yageo:
+  - Yageo Corporation
+
+TDK:
+  - TDK Corporation
+
+Samsung Electro-Mechanics:
+  - Samsung
+
+Renesas Electronics:
+  - Renesas
+
+ROHM Semiconductor:
+  - ROHM
+
+Würth Elektronik:
+  - Wurth Elektronik
+  - Würth
+
+Amphenol:
+  - Amphenol ICC
+
+TE Connectivity:
+  - TE
+  - Tyco Electronics
+
+Molex:
+  - Molex LLC
