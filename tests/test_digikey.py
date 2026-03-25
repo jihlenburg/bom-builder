@@ -175,6 +175,40 @@ class TestDigiKeyClient:
         assert headers["X-DIGIKEY-Locale-Currency"] == "EUR"
         assert headers["X-DIGIKEY-Locale-ShipToCountry"] == "fr"
 
+    def test_pricing_response_is_reused_from_persistent_cache(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("BOM_BUILDER_CACHE_DB", str(tmp_path / "cache.sqlite3"))
+
+        first_client = DigiKeyClient(
+            client_id="client-id",
+            client_secret="client-secret",
+            account_id="12345678",
+            cache_enabled=True,
+        )
+        first_transport = FakeDigiKeyTransport()
+        first_client._client = first_transport
+
+        first_result = first_client.pricing_by_quantity("P5555-ND", 100)
+        first_client.close()
+
+        second_client = DigiKeyClient(
+            client_id="client-id",
+            client_secret="client-secret",
+            account_id="12345678",
+            cache_enabled=True,
+        )
+        second_transport = FakeDigiKeyTransport()
+        second_client._client = second_transport
+
+        second_result = second_client.pricing_by_quantity("P5555-ND", 100)
+        second_client.close()
+
+        assert first_result.requested_product == "P5555-ND"
+        assert second_result.requested_product == "P5555-ND"
+        assert len(first_transport.post_calls) == 1
+        assert len(first_transport.get_calls) == 1
+        assert len(second_transport.post_calls) == 0
+        assert len(second_transport.get_calls) == 0
+
 
 class TestBestPricingOption:
     def test_selects_cheapest_total_price(self):

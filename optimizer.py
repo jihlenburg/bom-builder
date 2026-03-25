@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
+import os
 from typing import Iterable
 
 from models import PurchaseLeg
@@ -58,6 +59,9 @@ class OptimizedPurchasePlan:
     purchase_legs: tuple[PurchaseLeg, ...]
 
 
+DEFAULT_MANUFACTURING_PREFERENCE_PCT = 0.5
+
+
 def _round_up_to_multiple(quantity: int, multiple: int | None) -> int:
     """Round a quantity up to the next legal multiple when needed."""
     if multiple is None or multiple <= 1:
@@ -79,9 +83,12 @@ def _batch_noun(leg: PurchaseLeg) -> str:
 
 def _packaging_text(leg: PurchaseLeg) -> str:
     """Return one de-duplicated packaging label string for a purchase leg."""
+    if leg.packaging_mode:
+        return " ".join(str(leg.packaging_mode).split())
+
     texts: list[str] = []
     seen: set[str] = set()
-    for text in [leg.packaging_mode, leg.package_type]:
+    for text in [leg.package_type]:
         normalized = (text or "").strip()
         if not normalized:
             continue
@@ -97,7 +104,7 @@ def format_purchase_leg(leg: PurchaseLeg) -> str:
     """Return a short human-readable string for one concrete purchase leg."""
     if leg.order_batch_quantity and leg.order_batch_count:
         noun = _batch_noun(leg)
-        plural = noun if leg.order_batch_count == 1 else f"{noun}s"
+        plural = noun if leg.order_batch_count == 1 else _pluralize_batch_noun(noun)
         return f"{leg.order_batch_count} {plural} x {leg.order_batch_quantity}"
 
     packaging_text = _packaging_text(leg)
@@ -110,6 +117,27 @@ def format_order_plan(legs: Iterable[PurchaseLeg]) -> str:
     """Return the combined display string for one or more purchase legs."""
     rendered = [format_purchase_leg(leg) for leg in legs]
     return " + ".join(item for item in rendered if item)
+
+
+def _pluralize_batch_noun(noun: str) -> str:
+    """Return the plural form used in human-readable order plans."""
+    if noun.endswith("ch"):
+        return f"{noun}es"
+    return f"{noun}s"
+
+
+def resolve_manufacturing_preference_pct(value: float | None = None) -> float:
+    """Return the allowed cost delta for plant-friendly plan preference."""
+    if value is not None:
+        return max(value, 0.0)
+
+    raw = os.getenv("BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT", "").strip()
+    if not raw:
+        return DEFAULT_MANUFACTURING_PREFERENCE_PCT
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return DEFAULT_MANUFACTURING_PREFERENCE_PCT
 
 
 def compose_purchase_plan(
@@ -152,12 +180,14 @@ def compose_purchase_plan(
 
 def select_best_purchase_plan(
     plans: Iterable[OptimizedPurchasePlan],
+    *,
+    manufacturing_preference_pct: float | None = None,
 ) -> OptimizedPurchasePlan | None:
-    """Return the cheapest valid plan using stable tiebreakers."""
+    """Return the preferred valid plan using cost and plant-friendly tiebreakers."""
     plan_list = list(plans)
     if not plan_list:
         return None
-    return min(
+    cheapest_plan = min(
         plan_list,
         key=lambda plan: (
             plan.extended_price,
@@ -167,6 +197,57 @@ def select_best_purchase_plan(
             float("inf") if plan.price_break_quantity is None else plan.price_break_quantity,
         ),
     )
+    tolerance_pct = resolve_manufacturing_preference_pct(manufacturing_preference_pct)
+    tolerance_multiplier = 1 + (tolerance_pct / 100.0)
+    preferred_candidates = [
+        plan
+        for plan in plan_list
+        if plan.extended_price <= (cheapest_plan.extended_price * tolerance_multiplier) + 1e-9
+    ]
+    return min(preferred_candidates, key=_manufacturing_preference_key)
+
+
+def _manufacturing_preference_key(plan: OptimizedPurchasePlan) -> tuple[float, ...]:
+    """Return the stable preference key for plant-friendly purchase plans."""
+    reel_quantity = 0
+    stable_pack_quantity = 0
+    cut_tape_quantity = 0
+    for leg in plan.purchase_legs:
+        packaging_kind = _packaging_kind(leg)
+        if packaging_kind == "reel":
+            reel_quantity += leg.purchased_quantity
+            stable_pack_quantity += leg.purchased_quantity
+        elif packaging_kind == "stable_pack":
+            stable_pack_quantity += leg.purchased_quantity
+        elif packaging_kind == "cut_tape":
+            cut_tape_quantity += leg.purchased_quantity
+
+    return (
+        -reel_quantity,
+        -stable_pack_quantity,
+        cut_tape_quantity,
+        plan.extended_price,
+        plan.surplus_quantity,
+        len(plan.purchase_legs),
+        plan.purchased_quantity,
+        float("inf") if plan.price_break_quantity is None else plan.price_break_quantity,
+    )
+
+
+def _packaging_kind(leg: PurchaseLeg) -> str:
+    """Return a coarse manufacturing-friendly packaging class for one leg."""
+    text = _packaging_text(leg).lower()
+    if not text:
+        return "unknown"
+    if "cut tape" in text:
+        return "cut_tape"
+    if "mousereel" in text or "mouse reel" in text:
+        return "stable_pack"
+    if any(token in text for token in ("full reel", "reel", "t&r", "tape & reel", "tape and reel")):
+        return "reel"
+    if any(token in text for token in ("tray", "tube", "bulk")):
+        return "stable_pack"
+    return "unknown"
 
 
 def _family_strategy(
@@ -294,6 +375,7 @@ def optimize_purchase_families(
     families: Iterable[PurchaseFamily],
     *,
     mixed_strategy: str = "mixed packaging",
+    manufacturing_preference_pct: float | None = None,
 ) -> OptimizedPurchasePlan | None:
     """Return the best plan across all single-family and mixed-family options."""
     family_list = [family for family in families if family.price_breaks]
@@ -331,4 +413,7 @@ def optimize_purchase_families(
                 if plan is not None:
                     plans.append(plan)
 
-    return select_best_purchase_plan(plans)
+    return select_best_purchase_plan(
+        plans,
+        manufacturing_preference_pct=manufacturing_preference_pct,
+    )

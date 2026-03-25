@@ -29,6 +29,7 @@ from mouser import (
     smart_lookup,
     strip_qualifiers,
 )
+from manufacturer_packaging import ManufacturerPackagingDetails
 from models import AggregatedPart, MatchMethod
 from resolution_store import ResolutionStore
 
@@ -1024,6 +1025,129 @@ class TestMouserClient:
         assert transport.calls == 1
         assert details.packaging_source == "product_page"
         assert details.full_reel_quantity == 3000
+
+    def test_product_page_fallback_is_reused_from_persistent_cache(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("BOM_BUILDER_CACHE_DB", str(tmp_path / "cache.sqlite3"))
+
+        class RecordingTransport:
+            def __init__(self):
+                self.calls = 0
+
+            def get(self, url, follow_redirects=True):
+                self.calls += 1
+                request = httpx.Request("GET", url)
+                return httpx.Response(
+                    200,
+                    text=(
+                        "<html><body><div>Minimum: 1 Multiples: 1</div>"
+                        "<div>Full Reel (Order in multiples of 3000)</div>"
+                        "<div>Pricing (EUR)</div>"
+                        "<div>Qty. Unit Price Ext. Price</div>"
+                        "<div>Full Reel (Order in multiples of 3000)</div>"
+                        "<div>3000 0,565 € 1.695,00 €</div>"
+                        "<div>Packaging Choice</div></body></html>"
+                    ),
+                    request=request,
+                )
+
+            def close(self):
+                pass
+
+        first_transport = RecordingTransport()
+        client = MouserClient(
+            api_key="dummy",
+            cache_enabled=True,
+            allow_product_page_fallback=True,
+        )
+        client._client = first_transport
+        first_details = client.packaging_details(
+            {"ProductDetailUrl": "https://example.com/product"}
+        )
+        client.close()
+
+        second_transport = RecordingTransport()
+        cached_client = MouserClient(
+            api_key="dummy",
+            cache_enabled=True,
+            allow_product_page_fallback=True,
+        )
+        cached_client._client = second_transport
+        cached_details = cached_client.packaging_details(
+            {"ProductDetailUrl": "https://example.com/product"}
+        )
+        cached_client.close()
+
+        assert first_transport.calls == 1
+        assert second_transport.calls == 0
+        assert first_details.full_reel_quantity == 3000
+        assert cached_details.full_reel_quantity == 3000
+
+    def test_manufacturer_page_fallback_is_reused_from_persistent_cache(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("BOM_BUILDER_CACHE_DB", str(tmp_path / "cache.sqlite3"))
+        manufacturer_details = ManufacturerPackagingDetails(
+            packaging_mode="Full Reel",
+            packaging_source="manufacturer_page",
+            full_reel_quantity=3000,
+        )
+        manufacturer_url = "https://www.ti.com/product/PART/part-details/PARTOPN"
+
+        monkeypatch.setattr("mouser.manufacturer_page_url", lambda *args, **kwargs: manufacturer_url)
+        monkeypatch.setattr(
+            "mouser.manufacturer_packaging_details_from_html",
+            lambda *args, **kwargs: manufacturer_details,
+        )
+
+        class RecordingTransport:
+            def __init__(self):
+                self.calls = 0
+
+            def get(self, url, follow_redirects=True):
+                self.calls += 1
+                request = httpx.Request("GET", url)
+                return httpx.Response(200, text="<html></html>", request=request)
+
+            def close(self):
+                pass
+
+        candidate = {
+            "Manufacturer": "Texas Instruments",
+            "ManufacturerPartNumber": "PARTOPN",
+        }
+
+        first_transport = RecordingTransport()
+        client = MouserClient(
+            api_key="dummy",
+            cache_enabled=True,
+            allow_manufacturer_page_fallback=True,
+        )
+        client._client = first_transport
+        first_details = client.packaging_details(
+            candidate,
+            bom_part_number="PART",
+        )
+        client.close()
+
+        second_transport = RecordingTransport()
+        cached_client = MouserClient(
+            api_key="dummy",
+            cache_enabled=True,
+            allow_manufacturer_page_fallback=True,
+        )
+        cached_client._client = second_transport
+        cached_details = cached_client.packaging_details(
+            candidate,
+            bom_part_number="PART",
+        )
+        cached_client.close()
+
+        assert first_transport.calls == 1
+        assert second_transport.calls == 0
+        assert first_details.full_reel_quantity == 3000
+        assert cached_details.full_reel_quantity == 3000
 
     def test_rotates_to_backup_key_after_daily_limit(self, monkeypatch):
         client = MouserClient(api_key="primary-key", cache_enabled=False)

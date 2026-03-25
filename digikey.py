@@ -24,6 +24,7 @@ effective unit price, and which header strategy actually worked in production.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 import os
 import re
@@ -43,6 +44,7 @@ from config import (
     DIGIKEY_TOKEN_REFRESH_SAFETY_SECONDS,
 )
 from digikey_auth import DigiKeyTokens, resolve_digikey_client_credentials
+from lookup_cache import LookupCache
 from models import AggregatedPart, DistributorOffer, MatchMethod
 from mouser import manufacturers_match
 from optimizer import FamilyPriceBreak, PurchaseFamily, optimize_purchase_families
@@ -233,6 +235,8 @@ class DigiKeyClient:
         account_id: str = "",
         locale: DigiKeyLocale | None = None,
         timeout_seconds: float = 30.0,
+        cache_enabled: bool = False,
+        cache_ttl_seconds: int = 24 * 60 * 60,
     ):
         """Initialize the Digi-Key client from explicit or environment config."""
         self.client_id, self.client_secret = resolve_digikey_client_credentials(
@@ -243,12 +247,15 @@ class DigiKeyClient:
         self.locale = locale or resolve_digikey_locale()
         self.timeout_seconds = timeout_seconds
         self._client = httpx.Client(timeout=timeout_seconds)
+        self._cache = LookupCache(ttl_seconds=cache_ttl_seconds) if cache_enabled else None
         self._tokens: DigiKeyTokens | None = None
         self._token_expires_at = 0.0
         self.network_requests = 0
 
     def close(self) -> None:
         """Close underlying HTTP resources."""
+        if self._cache is not None:
+            self._cache.close()
         self._client.close()
 
     def __enter__(self) -> "DigiKeyClient":
@@ -262,8 +269,15 @@ class DigiKeyClient:
     def product_details(self, product_number: str) -> tuple[dict[str, Any], str]:
         """Return raw Digi-Key product-details JSON plus the header mode used."""
         path = f"/search/{quote(product_number, safe='')}/productdetails"
+        cached = self._cached_response("product_details", path)
+        if cached is not None:
+            payload, header_mode = cached
+            return payload, header_mode
+
         response, header_mode = self._request_with_header_fallback(path)
-        return response.json(), header_mode
+        payload = response.json()
+        self._store_cached_response("product_details", path, payload, header_mode)
+        return payload, header_mode
 
     def pricing_by_quantity(
         self,
@@ -275,12 +289,79 @@ class DigiKeyClient:
             f"/search/{quote(product_number, safe='')}/pricingbyquantity/"
             f"{requested_quantity}"
         )
+        cached = self._cached_response("pricing_by_quantity", path)
+        if cached is not None:
+            payload, header_mode = cached
+            return _parse_pricing_result(
+                payload,
+                header_mode_used=header_mode,
+                rate_limit_remaining=None,
+            )
+
         response, header_mode = self._request_with_header_fallback(path)
         payload = response.json()
+        self._store_cached_response("pricing_by_quantity", path, payload, header_mode)
         return _parse_pricing_result(
             payload,
             header_mode_used=header_mode,
             rate_limit_remaining=_header_int(response.headers, "X-RateLimit-Remaining"),
+        )
+
+    def _cached_response(
+        self,
+        endpoint: str,
+        path: str,
+    ) -> tuple[dict[str, Any], str] | None:
+        """Return one cached Digi-Key payload plus its successful header mode."""
+        if self._cache is None:
+            return None
+
+        cached = self._cache.get_provider_response(
+            "digikey_response",
+            self._cache_key(endpoint, path),
+        )
+        if not isinstance(cached, dict):
+            return None
+
+        payload = cached.get("payload")
+        header_mode = str(cached.get("header_mode") or "").strip()
+        if not isinstance(payload, dict) or not header_mode:
+            return None
+        return payload, header_mode
+
+    def _store_cached_response(
+        self,
+        endpoint: str,
+        path: str,
+        payload: dict[str, Any],
+        header_mode: str,
+    ) -> None:
+        """Store one Digi-Key payload under a stable request-context cache key."""
+        if self._cache is None:
+            return
+        self._cache.set_provider_response(
+            "digikey_response",
+            self._cache_key(endpoint, path),
+            {
+                "payload": payload,
+                "header_mode": header_mode,
+            },
+        )
+
+    def _cache_key(self, endpoint: str, path: str) -> str:
+        """Return the stable persistent-cache key for one Digi-Key request."""
+        return json.dumps(
+            {
+                "endpoint": endpoint,
+                "path": path,
+                "site": self.locale.site,
+                "language": self.locale.language,
+                "currency": self.locale.currency,
+                "ship_to_country": self.locale.ship_to_country,
+                "account_id": self.account_id or "",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
         )
 
     def _request_with_header_fallback(

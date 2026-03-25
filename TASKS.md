@@ -36,4 +36,6 @@ Active tasks should be recorded here while work is in progress and checked off o
 - [x] Add TI direct pricing plus FX normalization into the final supplier comparison
 - [x] Redesign the buyer-facing Excel/CSV order sheet and live console output
 - [x] Clean the repository, refresh docs, and remove stray local build/runtime artifacts
+- [x] Prefer manufacturing-friendly reel-heavy plans when they stay within a small configurable cost delta
+- [x] Expand the persistent cache to Digi-Key and TI responses, and scope `--mouser-delay` back to live Mouser traffic
 - [ ] Tighten deterministic Mouser resolution and ambiguity handling

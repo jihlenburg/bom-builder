@@ -14,7 +14,7 @@ confident distributor offer per BOM line.
 - Automatic package and pin count extraction from Mouser data
 - Output to CSV, Excel (`.xlsx`), or JSON
 - Statistical summary with top parts by cost and quantity, manufacturer breakdown, and package overview
-- Persistent Mouser search cache with 24-hour retention by default
+- Persistent distributor response cache with 24-hour retention by default
 - Verbose diagnostic mode (`-v`) for full debug/trace output on stdout
 - Interactive ambiguity resolver (`--interactive`) with saved manual selections
 - Optional OpenAI reranker (`--ai-resolve`) for the remaining ambiguous candidates
@@ -23,6 +23,7 @@ confident distributor offer per BOM line.
 - Price-break-aware overbuy selection that can choose full reels or larger packs when they reduce actual spend
 - Mixed-packaging optimization for Mouser, including reel-plus-remainder plans when they reduce total spend
 - Central distributor-agnostic purchase-plan optimizer shared by Mouser, Digi-Key, and TI offer selection
+- Small manufacturing-biased plan preference so reel-heavy buys can beat all-cut-tape plans when line cost stays within a configurable delta
 - CSV/Excel output includes buyer-facing order-plan columns such as batch size, batch count, shortage, and reel plan
 - Optional per-run trace transcript that captures exactly what this process wrote to stdout/stderr
 - Compact live console output with buyer-facing order plans, per-line pricing, and graceful one-shot AI fallback notices
@@ -54,10 +55,11 @@ DIGIKEY_LOCALE_CURRENCY=EUR
 DIGIKEY_LOCALE_SHIP_TO_COUNTRY=de
 BOM_BUILDER_TARGET_CURRENCY=EUR
 BOM_BUILDER_FX_OVERRIDES=
+BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT=0.5
 TI_STORE_API_KEY=your-ti-store-api-key
 TI_STORE_API_SECRET=your-ti-store-api-secret
 TI_STORE_PRICE_CURRENCY=USD
-BOM_BUILDER_CACHE_DB=/absolute/path/to/mouser_cache.sqlite3
+BOM_BUILDER_CACHE_DB=/absolute/path/to/distributor_cache.sqlite3
 BOM_BUILDER_RESOLUTIONS_FILE=/absolute/path/to/resolutions.json
 BOM_BUILDER_TRACE_FILE=/absolute/path/to/latest-run.log
 BOM_BUILDER_TRACE_DIR=/absolute/path/to/run-traces
@@ -70,7 +72,9 @@ the single-key fallback.
 
 `BOM_BUILDER_CACHE_DB` and `BOM_BUILDER_RESOLUTIONS_FILE` are optional file
 path overrides. If either entry is missing or blank, BOM Builder falls back to
-its platform default path for that file.
+its platform default path for that file. The cache database is now shared
+across Mouser, Digi-Key, and TI responses, even though the historical default
+filename still ends in `mouser_cache.sqlite3` for backward compatibility.
 
 `BOM_BUILDER_TRACE_FILE` writes one exact stdout/stderr transcript for the
 current run. `BOM_BUILDER_TRACE_DIR` instead creates one timestamped transcript
@@ -90,6 +94,12 @@ currency, BOM Builder converts them into the target currency using the ECB
 daily euro foreign exchange reference rates. `BOM_BUILDER_FX_OVERRIDES`
 supports manual overrides such as `USD:EUR=0.92` for deterministic testing or
 offline runs.
+
+`BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT` controls how far the optimizer may
+deviate from the absolute cheapest line cost when a more manufacturing-friendly
+plan is available. The default runtime value is `0.5`, which means BOM Builder
+may prefer reel-heavy or otherwise line-friendly packaging when the plan stays
+within `0.5%` of the cheapest valid option for that BOM line.
 
 For TI direct pricing, `TI_STORE_API_KEY` and `TI_STORE_API_SECRET` enable the
 TI Store Inventory and Pricing API integration for BOM lines whose
@@ -162,10 +172,22 @@ python main.py -d designs/board.json -u 1000 --trace-file run.log
 # Directly look up one part without creating a design JSON file
 python main.py --part-number ADS7138-Q1 --manufacturer TI -u 1 --verbose
 
-# Custom API delay (for rate limiting)
-python main.py -d designs/board.json -u 1000 --delay 2.0
+# Custom Mouser pacing delay after live Mouser requests
+python main.py -d designs/board.json -u 1000 --mouser-delay 2.0
 
-# Force fresh Mouser queries for one run
+# Show the full CLI reference
+python main.py --help
+
+# Flush the shared distributor cache and orphaned temp files
+python main.py --flush
+
+# Flush caches first, then continue into a normal BOM run
+python main.py --flush -d designs/board.json -u 1000
+
+# Also delete saved manual resolutions when you want a true clean slate
+python main.py --flush-resolutions
+
+# Force fresh distributor queries for one run
 python main.py -d designs/board.json -u 1000 --no-cache
 
 # Resolve ambiguous parts interactively and save your choices
@@ -190,27 +212,30 @@ python scripts/capture_live_fixtures.py
 
 | Flag | Description |
 |------|-------------|
-| `-d`, `--design` | Path(s) to design JSON file(s) (required) |
+| `-d`, `--design` | Path(s) to design JSON file(s) (required unless a flush action is used standalone) |
 | `--part-number` | Directly look up one manufacturer part number without a design file |
 | `--manufacturer` | Manufacturer hint required with `--part-number` |
 | `--quantity-per-unit` | Quantity per finished unit in `--part-number` mode |
 | `--description` | Optional description hint in `--part-number` mode |
 | `--package` | Optional package hint in `--part-number` mode |
 | `--pins` | Optional pin-count hint in `--part-number` mode |
-| `-u`, `--units` | Number of units to build (required) |
+| `-u`, `--units` | Number of units to build (required for actual BOM lookups) |
 | `-f`, `--format` | Output format: `csv`, `excel`, `json` |
 | `-o`, `--output` | Output file path (format auto-detected from extension) |
 | `-a`, `--attrition` | Attrition/waste factor, e.g. `0.02` for 2% |
-| `--api-key` | Mouser API key (overrides `.env` / environment variables) |
-| `--delay` | Delay between networked part lookups in seconds (default: `1.0`) |
-| `--cache-ttl-hours` | Mouser search cache retention in hours (default: `24`) |
-| `--no-cache` | Disable the persistent Mouser search cache |
+| `--mouser-api-key` | Mouser API key (overrides `.env` / environment variables) |
+| `--mouser-delay` | Delay after live Mouser requests in seconds (default: `1.0`) |
+| `--flush` | Remove the shared distributor cache DB, SQLite sidecars, and orphaned temp files before running; may be used standalone |
+| `--flush-resolutions` | Also remove the saved manual-resolution store; may be used standalone |
+| `--cache-ttl-hours` | Shared distributor-response cache retention in hours, including Mouser page-fallback packaging data (default: `24`) |
+| `--no-cache` | Disable the persistent distributor response cache |
 | `--interactive` | Prompt for manual candidate selection on ambiguous parts and save the choice |
 | `--ai-resolve` | Use OpenAI to rerank still-ambiguous candidates before prompting |
 | `--ai-model` | OpenAI model for `--ai-resolve` (default: `gpt-5.4-mini`) |
 | `--ai-confidence-threshold` | Minimum AI confidence required to auto-accept a reranked candidate |
 | `-v`, `--verbose` | Write full diagnostic trace output to stdout |
 | `--trace-file` | Mirror this run's stdout/stderr transcript into a file |
+| `-h`, `--help` | Show the built-in CLI help and exit |
 
 ## Design JSON Format
 

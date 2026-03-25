@@ -34,6 +34,7 @@ from config import (
 )
 from digikey import DigiKeyClient, digikey_is_configured, price_part_via_digikey
 from fx import FXRateProvider, convert_offers_currency, resolve_target_currency
+from lookup_cache import default_cache_db_path
 from models import (
     AggregatedPart,
     BomSummary,
@@ -45,7 +46,7 @@ from models import (
 )
 from mouser import MouserClient, price_part as price_mouser_part
 from report import write_csv, write_excel, write_json
-from resolution_store import ResolutionStore
+from resolution_store import ResolutionStore, default_resolution_store_path
 from ti import TIClient, price_part_via_ti, ti_is_configured, ti_supports_manufacturer
 
 FORMAT_EXTENSIONS = {"csv": ".csv", "excel": ".xlsx", "json": ".json"}
@@ -89,9 +90,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         Parsed command-line arguments ready to pass into :func:`run`.
     """
     parser = argparse.ArgumentParser(
+        add_help=True,
         description="Build and price an eBOM from design JSON files across supported distributors."
     )
-    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group = parser.add_mutually_exclusive_group(required=False)
     input_group.add_argument(
         "--design", "-d",
         nargs="+", type=Path,
@@ -134,7 +136,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--units", "-u",
-        type=_positive_int, required=True,
+        type=_positive_int, default=None,
         help="Number of units to build (must be >= 1)",
     )
     parser.add_argument(
@@ -153,14 +155,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Output file path (default: bom_output.<format>)",
     )
     parser.add_argument(
-        "--api-key",
+        "--mouser-api-key",
         type=str, default="",
         help="Mouser API key (overrides MOUSER_API_KEY / .env)",
     )
     parser.add_argument(
-        "--delay",
+        "--mouser-delay",
         type=_non_negative_float, default=1.0,
-        help="Delay between API requests in seconds (default: 1.0)",
+        help="Delay after live Mouser requests in seconds (default: 1.0)",
     )
     parser.add_argument(
         "--trace-file",
@@ -169,14 +171,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional file path that captures this run's stdout/stderr transcript",
     )
     parser.add_argument(
+        "--flush",
+        action="store_true",
+        help="Flush shared distributor caches and orphaned temp files before running; may be used standalone",
+    )
+    parser.add_argument(
+        "--flush-resolutions",
+        action="store_true",
+        help="Also remove the saved manual-resolution store; may be used standalone",
+    )
+    parser.add_argument(
         "--cache-ttl-hours",
         type=_non_negative_float, default=24.0,
-        help="Retention for cached Mouser search results in hours (default: 24)",
+        help="Retention for cached distributor responses in hours (default: 24)",
     )
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Disable the persistent Mouser search cache",
+        help="Disable the persistent distributor response cache",
     )
     parser.add_argument(
         "--dry-run",
@@ -211,6 +223,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Minimum AI confidence required to auto-accept a reranked candidate (default: 0.85)",
     )
     args = parser.parse_args(argv)
+
+    has_lookup_target = bool(args.design or args.part_number)
+    has_flush_action = bool(args.flush or args.flush_resolutions)
+    if not has_flush_action and not has_lookup_target:
+        parser.error(
+            "one of --design or --part-number is required unless --flush or --flush-resolutions is used"
+        )
+    if has_lookup_target and args.units is None:
+        parser.error("--units is required when running a BOM lookup")
+    if has_flush_action and not has_lookup_target and args.units is not None:
+        parser.error(
+            "--units requires --design or --part-number when flush options are used standalone"
+        )
 
     single_part_fields = {
         "--manufacturer": args.manufacturer,
@@ -309,6 +334,49 @@ def _write_trace_header(
     trace_stream.flush()
 
 
+def _flush_runtime_paths(*, include_resolutions: bool = False) -> list[Path]:
+    """Delete shared cache files and orphaned temp files.
+
+    By default the flush action deliberately keeps the durable manual
+    resolution store so saved interactive decisions survive cold-cache runs.
+    Callers may opt in to deleting the saved resolutions as well.
+    """
+    cache_db = default_cache_db_path()
+    resolution_tmp = default_resolution_store_path().with_suffix(".tmp")
+    candidates = [
+        cache_db,
+        Path(f"{cache_db}-shm"),
+        Path(f"{cache_db}-wal"),
+        Path(f"{cache_db}-journal"),
+        resolution_tmp,
+    ]
+    if include_resolutions:
+        candidates.append(default_resolution_store_path())
+
+    removed: list[Path] = []
+    for path in candidates:
+        try:
+            if path.exists():
+                path.unlink()
+                removed.append(path)
+        except OSError as exc:
+            print(f"Warning: could not remove {path}: {exc}", file=sys.stderr)
+    return removed
+
+
+def _run_flush_action(*, include_resolutions: bool = False) -> None:
+    """Flush runtime caches and print a short user-facing summary."""
+    print("Flushing runtime caches and temp files...")
+    if include_resolutions:
+        print("  including saved manual resolutions")
+    removed = _flush_runtime_paths(include_resolutions=include_resolutions)
+    if removed:
+        for path in removed:
+            print(f"  removed {path}")
+    else:
+        print("  nothing to remove")
+
+
 def load_designs(paths: list[Path]) -> list[Design]:
     """Load and validate all requested design files from disk.
 
@@ -366,7 +434,10 @@ def build_input_designs(args: argparse.Namespace) -> list[Design]:
 
 
 def price_parts(
-    aggregated: list[AggregatedPart], args: argparse.Namespace
+    aggregated: list[AggregatedPart],
+    args: argparse.Namespace,
+    *,
+    run_started_at: float | None = None,
 ) -> list[PricedPart]:
     """Resolve pricing for aggregated BOM lines according to CLI options.
 
@@ -379,9 +450,12 @@ def price_parts(
         print("\n  [dry-run] Skipping distributor API lookups")
         return [PricedPart.from_aggregated(agg) for agg in aggregated]
 
+    if run_started_at is None:
+        run_started_at = time.perf_counter()
+
     print("\nLooking up distributor prices...")
     with MouserClient(
-        api_key=args.api_key,
+        api_key=args.mouser_api_key,
         cache_enabled=not args.no_cache,
         cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
     ) as mouser_client:
@@ -395,9 +469,23 @@ def price_parts(
             else nullcontext(None)
         )
         with ai_context as ai_resolver:
-            digikey_context = DigiKeyClient() if digikey_is_configured() else nullcontext(None)
+            digikey_context = (
+                DigiKeyClient(
+                    cache_enabled=not args.no_cache,
+                    cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
+                )
+                if digikey_is_configured()
+                else nullcontext(None)
+            )
             with digikey_context as digikey_client:
-                ti_context = TIClient() if ti_is_configured() else nullcontext(None)
+                ti_context = (
+                    TIClient(
+                        cache_enabled=not args.no_cache,
+                        cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
+                    )
+                    if ti_is_configured()
+                    else nullcontext(None)
+                )
                 with ti_context as ti_client:
                     with FXRateProvider() as fx_rate_provider:
                         return _price_parts_across_distributors(
@@ -407,7 +495,8 @@ def price_parts(
                             ti_client=ti_client,
                             fx_rate_provider=fx_rate_provider,
                             comparison_currency=resolve_target_currency(),
-                            delay=args.delay,
+                            delay=args.mouser_delay,
+                            run_started_at=run_started_at,
                             interactive=args.interactive,
                             resolution_store=resolution_store,
                             ai_resolver=ai_resolver,
@@ -426,14 +515,24 @@ def _price_parts_across_distributors(
     interactive: bool,
     resolution_store: ResolutionStore,
     ai_resolver: OpenAIResolver | None,
+    run_started_at: float | None = None,
 ) -> list[PricedPart]:
     """Resolve prices for each BOM line across all configured distributors."""
     results: list[PricedPart] = []
     total = len(parts)
+    if run_started_at is None:
+        run_started_at = time.perf_counter()
 
     for i, agg in enumerate(parts, 1):
-        print(f"  [{i}/{total}] Looking up {agg.part_number}...")
-        before_requests = _network_request_count(mouser_client, digikey_client, ti_client)
+        lookup_started_at = time.perf_counter()
+        elapsed_before_lookup = lookup_started_at - run_started_at
+        source_timings: list[tuple[str, float]] = []
+        print(
+            f"  [{i}/{total} +{_format_elapsed_clock(elapsed_before_lookup)}] "
+            f"Looking up {agg.part_number}..."
+        )
+        before_mouser_requests = _mouser_request_count(mouser_client)
+        mouser_started_at = time.perf_counter()
         priced = price_mouser_part(
             agg,
             mouser_client,
@@ -441,22 +540,29 @@ def _price_parts_across_distributors(
             resolution_store=resolution_store,
             ai_resolver=ai_resolver,
         )
+        source_timings.append(("mouser", time.perf_counter() - mouser_started_at))
         if digikey_client is not None:
+            digikey_terms = _digikey_query_terms(agg, priced)
+            digikey_started_at = time.perf_counter()
             priced.offers.append(
                 price_part_via_digikey(
                     agg,
                     digikey_client,
-                    query_terms=_digikey_query_terms(agg, priced),
+                    query_terms=digikey_terms,
                 )
             )
-        if ti_client is not None and ti_supports_manufacturer(agg.manufacturer):
+            source_timings.append(("digikey", time.perf_counter() - digikey_started_at))
+        ti_terms = _manufacturer_direct_query_terms(agg, priced)
+        if ti_client is not None and ti_supports_manufacturer(agg.manufacturer) and ti_terms:
+            ti_started_at = time.perf_counter()
             priced.offers.append(
                 price_part_via_ti(
                     agg,
                     ti_client,
-                    query_terms=_ti_query_terms(agg, priced),
+                    query_terms=ti_terms,
                 )
             )
+            source_timings.append(("ti", time.perf_counter() - ti_started_at))
         priced.offers = convert_offers_currency(
             priced.offers,
             comparison_currency,
@@ -466,51 +572,72 @@ def _price_parts_across_distributors(
         if selected_offer is not None:
             priced.apply_selected_offer(selected_offer)
 
-        _print_lookup_status(priced)
+        _print_lookup_status(
+            priced,
+            part_duration=time.perf_counter() - lookup_started_at,
+            source_timings=source_timings,
+        )
         results.append(priced)
 
-        used_network = (
-            _network_request_count(mouser_client, digikey_client, ti_client)
-            > before_requests
+        used_live_mouser = (
+            _mouser_request_count(mouser_client)
+            > before_mouser_requests
         )
-        if i < total and delay > 0 and used_network:
+        if i < total and delay > 0 and used_live_mouser:
             time.sleep(delay)
 
     return results
 
 
-def _network_request_count(
-    mouser_client: MouserClient,
-    digikey_client: DigiKeyClient | None,
-    ti_client: TIClient | None,
-) -> int:
-    """Return the combined tracked network requests across active distributors."""
-    digikey_requests = 0 if digikey_client is None else digikey_client.network_requests
-    ti_requests = 0 if ti_client is None else ti_client.network_requests
-    return mouser_client.network_requests + digikey_requests + ti_requests
+def _mouser_request_count(mouser_client: MouserClient) -> int:
+    """Return the tracked live Mouser request count for pacing decisions."""
+    paced = getattr(mouser_client, "paced_network_requests", None)
+    if paced is not None:
+        return paced
+    return mouser_client.network_requests
 
 
 def _digikey_query_terms(agg: AggregatedPart, priced: PricedPart) -> list[str]:
     """Return the ordered Digi-Key lookup terms for one BOM line."""
-    terms: list[str] = []
-    if priced.manufacturer_part_number:
-        terms.append(priced.manufacturer_part_number)
-    if agg.part_number not in terms:
-        terms.append(agg.part_number)
-    return terms
+    if _has_confirmed_manufacturer_part_number(priced):
+        return [priced.manufacturer_part_number]
+    return [agg.part_number] if agg.part_number else []
 
 
 def _ti_query_terms(agg: AggregatedPart, priced: PricedPart) -> list[str]:
     """Return the ordered TI lookup terms for one BOM line."""
+    return _manufacturer_direct_query_terms(agg, priced)
+
+
+def _manufacturer_direct_query_terms(
+    agg: AggregatedPart,
+    priced: PricedPart,
+) -> list[str]:
+    """Return authoritative query terms for a manufacturer-direct storefront.
+
+    Manufacturer stores should resolve their own public part numbers. The
+    original BOM part number is therefore queried first, while a separately
+    confirmed manufacturer orderable can be used as a fallback term.
+    """
     terms: list[str] = []
     if agg.part_number:
         terms.append(agg.part_number)
     if (
-        priced.manufacturer_part_number
+        _has_confirmed_manufacturer_part_number(priced)
         and priced.manufacturer_part_number not in terms
     ):
         terms.append(priced.manufacturer_part_number)
     return terms
+
+
+def _has_confirmed_manufacturer_part_number(priced: PricedPart) -> bool:
+    """Return whether a resolved manufacturer part number is trustworthy enough to reuse."""
+    return bool(
+        priced.manufacturer_part_number
+        and not priced.review_required
+        and priced.match_method is not None
+        and priced.match_method != MatchMethod.NOT_FOUND
+    )
 
 
 def _select_preferred_offer(
@@ -565,18 +692,57 @@ def _line_cost_per_unit(part: PricedPart, units: int) -> float | None:
     return part.extended_price / units
 
 
-def _print_lookup_status(priced: PricedPart) -> None:
+def _format_elapsed_clock(seconds: float) -> str:
+    """Return a compact run-elapsed clock like ``00:07.123`` or ``1:02:15.456``."""
+    total_milliseconds = max(0, int(round(seconds * 1000)))
+    total_seconds, milliseconds = divmod(total_milliseconds, 1000)
+    minutes, secs = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:d}:{minutes:02d}:{secs:02d}.{milliseconds:03d}"
+    return f"{minutes:02d}:{secs:02d}.{milliseconds:03d}"
+
+
+def _format_part_duration(seconds: float) -> str:
+    """Return a compact single-part duration label."""
+    if seconds < 60:
+        return f"{seconds:.3f}s"
+    return _format_elapsed_clock(seconds)
+
+
+def _print_lookup_status(
+    priced: PricedPart,
+    *,
+    part_duration: float | None = None,
+    source_timings: list[tuple[str, float]] | None = None,
+) -> None:
     """Print a compact buyer-facing status block for one priced part."""
     indent = " " * 11
     status = _lookup_status_label(priced)
     source = _lookup_source_label(priced)
     headline = _lookup_headline(priced)
+    timing = _lookup_timing_suffix(part_duration, source_timings)
 
-    print(f"{indent}{status:<7} {source:<10} {headline}")
+    print(f"{indent}{status:<7} {source:<10} {headline}{timing}")
 
     note = _lookup_note(priced)
     if note:
         print(f"{indent}note: {note}")
+
+
+def _lookup_timing_suffix(
+    part_duration: float | None,
+    source_timings: list[tuple[str, float]] | None,
+) -> str:
+    """Return the live-output timing suffix for one part lookup."""
+    segments: list[str] = []
+    if part_duration is not None:
+        segments.append(_format_part_duration(part_duration))
+    for source_name, duration in source_timings or ():
+        segments.append(f"{source_name}={_format_part_duration(duration)}")
+    if not segments:
+        return ""
+    return f"   [{' | '.join(segments)}]"
 
 
 def _lookup_status_label(priced: PricedPart) -> str:
@@ -961,8 +1127,21 @@ def run(args: argparse.Namespace) -> int:
         returned for argument/environment usage errors such as requesting
         interactive mode without a TTY.
     """
+    run_started_at = time.perf_counter()
     trace_path = resolve_trace_path(getattr(args, "trace_file", None))
     with install_console_trace(trace_path) as trace_stream:
+        setup_logging(args.verbose)
+
+        if trace_path is not None:
+            print(f"Trace transcript: {trace_path}")
+
+        flush_requested = bool(getattr(args, "flush", False))
+        flush_resolutions_requested = bool(getattr(args, "flush_resolutions", False))
+        if flush_requested or flush_resolutions_requested:
+            _run_flush_action(include_resolutions=flush_resolutions_requested)
+            if not getattr(args, "design", None) and not getattr(args, "part_number", None):
+                return 0
+
         fmt, output = resolve_output_format(args)
         if trace_stream is not None and trace_path is not None:
             _write_trace_header(
@@ -971,11 +1150,6 @@ def run(args: argparse.Namespace) -> int:
                 output=output,
                 trace_path=trace_path,
             )
-
-        setup_logging(args.verbose)
-
-        if trace_path is not None:
-            print(f"Trace transcript: {trace_path}")
 
         if args.interactive and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             print("Error: --interactive requires a TTY on stdin/stdout", file=sys.stderr)
@@ -987,7 +1161,7 @@ def run(args: argparse.Namespace) -> int:
         aggregated = aggregate_parts(designs, args.units, args.attrition)
         print(f"  {len(aggregated)} unique parts")
 
-        priced = price_parts(aggregated, args)
+        priced = price_parts(aggregated, args, run_started_at=run_started_at)
         summary = BomSummary.from_parts(priced, args.units)
 
         print()
@@ -995,6 +1169,7 @@ def run(args: argparse.Namespace) -> int:
 
         print()
         print_summary(priced, summary)
+        print(f"\nCompleted in {_format_elapsed_clock(time.perf_counter() - run_started_at)}")
         return 0
 
 

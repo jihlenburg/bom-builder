@@ -69,3 +69,82 @@ class TestOptimizePurchaseFamilies:
         assert plan.pricing_strategy == "mixed packaging"
         assert plan.order_plan == "3 reels x 1800 + 600 cut tape"
         assert len(plan.purchase_legs) == 2
+
+    def test_prefers_reel_heavy_plan_when_cost_is_equal(self):
+        families = (
+            PurchaseFamily(
+                family_id="cut_tape",
+                packaging_mode="Cut Tape",
+                base_pricing_strategy="requested quantity",
+                strategy_mode="static",
+                allow_mixing_as_remainder=True,
+                price_breaks=(
+                    FamilyPriceBreak(quantity=1, unit_price=0.80, currency="EUR"),
+                ),
+            ),
+            PurchaseFamily(
+                family_id="full_reel",
+                packaging_mode="Full Reel",
+                minimum_order_quantity=3000,
+                order_multiple=3000,
+                full_reel_quantity=3000,
+                base_pricing_strategy="full reel",
+                strategy_mode="full_reel",
+                allow_mixing_as_bulk=True,
+                allow_mixing_as_remainder=False,
+                mix_quantity=3000,
+                price_breaks=(
+                    FamilyPriceBreak(quantity=1, unit_price=0.80, currency="EUR"),
+                ),
+            ),
+        )
+
+        plan = optimize_purchase_families(
+            10000,
+            families,
+            manufacturing_preference_pct=0.0,
+        )
+
+        assert plan is not None
+        assert plan.extended_price == 8000.0
+        assert plan.order_plan == "3 reels x 3000 + 1000 cut tape"
+        assert len(plan.purchase_legs) == 2
+
+    def test_prefers_reel_heavy_plan_within_small_cost_delta(self):
+        families = (
+            PurchaseFamily(
+                family_id="cut_tape",
+                packaging_mode="Cut Tape",
+                base_pricing_strategy="requested quantity",
+                strategy_mode="static",
+                allow_mixing_as_remainder=True,
+                price_breaks=(
+                    FamilyPriceBreak(quantity=1, unit_price=0.8000, currency="EUR"),
+                ),
+            ),
+            PurchaseFamily(
+                family_id="full_reel",
+                packaging_mode="Full Reel",
+                minimum_order_quantity=3000,
+                order_multiple=3000,
+                full_reel_quantity=3000,
+                base_pricing_strategy="full reel",
+                strategy_mode="full_reel",
+                allow_mixing_as_bulk=True,
+                allow_mixing_as_remainder=False,
+                mix_quantity=3000,
+                price_breaks=(
+                    FamilyPriceBreak(quantity=1, unit_price=0.8030, currency="EUR"),
+                ),
+            ),
+        )
+
+        plan = optimize_purchase_families(
+            10000,
+            families,
+            manufacturing_preference_pct=0.5,
+        )
+
+        assert plan is not None
+        assert plan.extended_price == 8027.0
+        assert plan.order_plan == "3 reels x 3000 + 1000 cut tape"

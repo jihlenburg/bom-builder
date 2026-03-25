@@ -1,4 +1,4 @@
-"""Tests for persistent Mouser response caching."""
+"""Tests for persistent distributor response caching."""
 
 import sqlite3
 import sys
@@ -51,4 +51,17 @@ class TestLookupCache:
 
         assert cache.has("PART1", "Exact") is True
         assert cache.has("PART1", "BeginsWith") is False
+        cache.close()
+
+    def test_round_trip_generic_provider_entry(self, tmp_path):
+        cache = LookupCache(ttl_seconds=3600, db_path=tmp_path / "cache.sqlite3")
+        payload = {"RequestedProduct": "P5555-ND", "RequestedQuantity": 100}
+
+        cache.set_provider_response("digikey_response", "pricing:P5555-ND:100", payload)
+
+        assert (
+            cache.get_provider_response("digikey_response", "pricing:P5555-ND:100")
+            == payload
+        )
+        assert cache.has_provider_response("digikey_response", "pricing:P5555-ND:100") is True
         cache.close()

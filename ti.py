@@ -23,6 +23,7 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+from lookup_cache import LookupCache
 from models import AggregatedPart, DistributorOffer, MatchMethod
 from optimizer import FamilyPriceBreak, PurchaseFamily, optimize_purchase_families
 from secret_store import get_secret
@@ -243,10 +244,80 @@ def _full_reel_quantity(product: TIProduct) -> int | None:
     carrier = (product.package_carrier or "").lower()
     if (
         product.standard_pack_quantity
-        and any(token in carrier for token in ("reel", "t&r"))
+        and (
+            any(token in carrier for token in ("reel", "t&r"))
+            or "cut tape" in carrier
+            or product.custom_reel
+        )
     ):
         return product.standard_pack_quantity
     return None
+
+
+def _normalized_ti_packaging_mode(
+    product: TIProduct,
+    *,
+    prefer_full_reel: bool = False,
+) -> str | None:
+    """Return a buyer-facing packaging label for one TI packaging mode."""
+    if prefer_full_reel and _full_reel_quantity(product):
+        return "Full Reel"
+
+    carrier = (product.package_carrier or "").strip()
+    lowered = carrier.lower()
+    if "cut tape" in lowered:
+        return "Cut Tape"
+    if "mousereel" in lowered or "mouse reel" in lowered:
+        return "MouseReel"
+    if any(token in lowered for token in ("reel", "t&r", "tape & reel", "tape and reel")):
+        return "Full Reel"
+    if "tray" in lowered:
+        return "Tray"
+    if "tube" in lowered:
+        return "Tube"
+    if "bulk" in lowered:
+        return "Bulk"
+    return carrier or None
+
+
+def _supports_ti_full_reel_family(product: TIProduct) -> bool:
+    """Return whether TI metadata is strong enough to synthesize a reel family."""
+    full_reel_quantity = _full_reel_quantity(product)
+    if full_reel_quantity is None:
+        return False
+
+    packaging_mode = _normalized_ti_packaging_mode(product)
+    if packaging_mode == "Full Reel":
+        return False
+
+    carrier = (product.package_carrier or "").lower()
+    return bool(
+        product.custom_reel
+        or "cut tape" in carrier
+        or "reel" in carrier
+        or "t&r" in carrier
+    )
+
+
+def _selected_ti_packaging_mode(
+    plan,
+    fallback: str | None,
+) -> str | None:
+    """Return the chosen packaging summary for one TI purchase plan."""
+    modes: list[str] = []
+    seen: set[str] = set()
+    for leg in plan.purchase_legs:
+        mode = (leg.packaging_mode or "").strip()
+        if not mode or mode in seen:
+            continue
+        modes.append(mode)
+        seen.add(mode)
+
+    if not modes:
+        return fallback
+    if len(modes) == 1:
+        return modes[0]
+    return "Mixed Packaging"
 
 
 class TIClient:
@@ -264,6 +335,8 @@ class TIClient:
         client_secret: str = "",
         price_currency: str = "",
         timeout_seconds: float = 30.0,
+        cache_enabled: bool = False,
+        cache_ttl_seconds: int = 24 * 60 * 60,
     ):
         """Initialize the TI client from explicit or environment config."""
         self.client_id, self.client_secret = _resolve_ti_credentials(
@@ -273,6 +346,7 @@ class TIClient:
         self.price_currency = resolve_ti_price_currency(price_currency)
         self.timeout_seconds = timeout_seconds
         self._client = httpx.Client(timeout=timeout_seconds)
+        self._cache = LookupCache(ttl_seconds=cache_ttl_seconds) if cache_enabled else None
         self.use_curl = True
         self._access_token = ""
         self._token_expires_at = 0.0
@@ -280,6 +354,8 @@ class TIClient:
 
     def close(self) -> None:
         """Close underlying HTTP resources."""
+        if self._cache is not None:
+            self._cache.close()
         self._client.close()
 
     def __enter__(self) -> "TIClient":
@@ -450,6 +526,12 @@ class TIClient:
 
     def product(self, product_number: str) -> TIProduct:
         """Return normalized TI store pricing information for one part number."""
+        cache_key = self._cache_key(product_number)
+        if self._cache is not None:
+            cached = self._cache.get_provider_response("ti_store_product", cache_key)
+            if isinstance(cached, dict):
+                return self._product_from_payload(product_number, cached)
+
         token = self._ensure_access_token()
         payload = self._request_json(
             "GET",
@@ -459,7 +541,13 @@ class TIClient:
             ),
             headers=self._request_headers(token),
         )
+        if self._cache is not None:
+            self._cache.set_provider_response("ti_store_product", cache_key, payload)
         return self._product_from_payload(product_number, payload)
+
+    def _cache_key(self, product_number: str) -> str:
+        """Return the stable persistent-cache key for one TI product lookup."""
+        return f"{product_number}|{self.price_currency}"
 
 
 def _http_status_lookup_error(e: httpx.HTTPStatusError) -> str:
@@ -571,7 +659,10 @@ def price_part_via_ti(
             purchased_quantity=selected_plan.purchased_quantity,
             surplus_quantity=selected_plan.surplus_quantity,
             package_type=product.package_type,
-            packaging_mode=product.package_carrier,
+            packaging_mode=_selected_ti_packaging_mode(
+                selected_plan,
+                _normalized_ti_packaging_mode(product),
+            ),
             packaging_source="ti_store_inventory_pricing_api",
             minimum_order_quantity=product.minimum_order_quantity,
             order_multiple=None,
@@ -597,7 +688,9 @@ def price_part_via_ti(
         availability=_availability_text(last_product) if last_product is not None else None,
         required_quantity=agg.total_quantity,
         package_type=last_product.package_type if last_product is not None else None,
-        packaging_mode=last_product.package_carrier if last_product is not None else None,
+        packaging_mode=(
+            _normalized_ti_packaging_mode(last_product) if last_product is not None else None
+        ),
         packaging_source=(
             "ti_store_inventory_pricing_api" if last_product is not None else None
         ),
@@ -620,25 +713,54 @@ def _ti_purchase_families(
     ) > product.order_limit:
         return ()
 
-    family = PurchaseFamily(
-        family_id=product.ti_part_number or product.generic_part_number or "ti_store",
-        package_type=product.package_type,
-        packaging_mode=product.package_carrier,
-        minimum_order_quantity=product.minimum_order_quantity,
-        order_multiple=None,
-        full_reel_quantity=None,
-        base_pricing_strategy="TI store price break",
-        strategy_mode="static",
-        allow_mixing_as_bulk=False,
-        allow_mixing_as_remainder=False,
-        price_breaks=tuple(
-            FamilyPriceBreak(
-                quantity=price_break.price_break_quantity,
-                unit_price=price_break.price,
-                currency=schedule.currency,
-            )
-            for price_break in schedule.price_breaks
-            if product.order_limit is None or price_break.price_break_quantity <= product.order_limit
-        ),
+    normalized_breaks = tuple(
+        FamilyPriceBreak(
+            quantity=price_break.price_break_quantity,
+            unit_price=price_break.price,
+            currency=schedule.currency,
+        )
+        for price_break in schedule.price_breaks
+        if product.order_limit is None or price_break.price_break_quantity <= product.order_limit
     )
-    return (family,) if family.price_breaks else ()
+    if not normalized_breaks:
+        return ()
+
+    families: list[PurchaseFamily] = []
+    base_family_id = product.ti_part_number or product.generic_part_number or "ti_store"
+    exact_packaging_mode = _normalized_ti_packaging_mode(product)
+    families.append(
+        PurchaseFamily(
+            family_id=base_family_id,
+            package_type=product.package_type,
+            packaging_mode=exact_packaging_mode,
+            minimum_order_quantity=product.minimum_order_quantity,
+            order_multiple=None,
+            full_reel_quantity=None,
+            base_pricing_strategy="TI store price break",
+            strategy_mode="static",
+            allow_mixing_as_bulk=False,
+            allow_mixing_as_remainder=exact_packaging_mode == "Cut Tape",
+            price_breaks=normalized_breaks,
+        )
+    )
+
+    full_reel_quantity = _full_reel_quantity(product)
+    if _supports_ti_full_reel_family(product) and full_reel_quantity is not None:
+        families.append(
+            PurchaseFamily(
+                family_id=f"{base_family_id}_full_reel",
+                package_type=product.package_type,
+                packaging_mode=_normalized_ti_packaging_mode(product, prefer_full_reel=True),
+                minimum_order_quantity=full_reel_quantity,
+                order_multiple=full_reel_quantity,
+                full_reel_quantity=full_reel_quantity,
+                base_pricing_strategy="full reel",
+                strategy_mode="full_reel",
+                allow_mixing_as_bulk=True,
+                allow_mixing_as_remainder=False,
+                mix_quantity=full_reel_quantity,
+                price_breaks=normalized_breaks,
+            )
+        )
+
+    return tuple(families)

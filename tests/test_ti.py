@@ -157,6 +157,52 @@ class TestTIClient:
         assert transport.get_calls
         assert "currency=EUR" in transport.get_calls[0][0]
 
+    def test_product_response_is_reused_from_persistent_cache(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("BOM_BUILDER_CACHE_DB", str(tmp_path / "cache.sqlite3"))
+
+        first_client = TIClient(
+            client_id="client-id",
+            client_secret="client-secret",
+            cache_enabled=True,
+        )
+        first_client.use_curl = False
+        first_transport = FakeTITransport()
+        first_transport.product_payloads["TMP421AQDCNRQ1"] = _product_response(
+            {
+                "tiPartNumber": "TMP421AQDCNRQ1",
+                "genericPartNumber": "TMP421-Q1",
+                "pricing": [
+                    {
+                        "currency": "USD",
+                        "priceBreaks": [{"priceBreakQuantity": 1, "price": 1.25}],
+                    }
+                ],
+            }
+        )
+        first_client._client = first_transport
+
+        first_product = first_client.product("TMP421AQDCNRQ1")
+        first_client.close()
+
+        second_client = TIClient(
+            client_id="client-id",
+            client_secret="client-secret",
+            cache_enabled=True,
+        )
+        second_client.use_curl = False
+        second_transport = FakeTITransport()
+        second_client._client = second_transport
+
+        second_product = second_client.product("TMP421AQDCNRQ1")
+        second_client.close()
+
+        assert first_product.ti_part_number == "TMP421AQDCNRQ1"
+        assert second_product.ti_part_number == "TMP421AQDCNRQ1"
+        assert len(first_transport.post_calls) == 1
+        assert len(first_transport.get_calls) == 1
+        assert len(second_transport.post_calls) == 0
+        assert len(second_transport.get_calls) == 0
+
 
 class TestPricePartViaTI:
     def test_normalizes_successful_store_offer_with_overbuy(self):
@@ -212,7 +258,7 @@ class TestPricePartViaTI:
         assert offer.required_quantity == 950
         assert offer.purchased_quantity == 1000
         assert offer.surplus_quantity == 50
-        assert offer.packaging_mode == "LARGE T&R"
+        assert offer.packaging_mode == "Full Reel"
         assert offer.package_type == "Large reel"
         assert offer.packaging_source == "ti_store_inventory_pricing_api"
         assert offer.minimum_order_quantity == 1
@@ -223,6 +269,53 @@ class TestPricePartViaTI:
         assert (offer.order_plan or "").startswith("1000 ")
         assert offer.match_method == MatchMethod.EXACT
         assert "5,000 in stock" in (offer.availability or "")
+
+    def test_prefers_mixed_reel_plus_cut_tape_when_ti_packaging_allows_it(self):
+        client = TIClient(
+            client_id="client-id",
+            client_secret="client-secret",
+            price_currency="EUR",
+        )
+        client.use_curl = False
+        transport = FakeTITransport()
+        transport.product_payloads["TPS61041QDBVRQ1"] = _product_response(
+            {
+                "tiPartNumber": "TPS61041QDBVRQ1",
+                "genericPartNumber": "TPS61041-Q1",
+                "quantity": 50000,
+                "minimumOrderQuantity": 1,
+                "standardPackQuantity": 3000,
+                "packageType": "SOT-23",
+                "packageCarrier": "CUT TAPE TPS61041QDBVQ1_5_SOT-23_DBV",
+                "customReel": True,
+                "pricing": [
+                    {
+                        "currency": "EUR",
+                        "priceBreaks": [
+                            {"priceBreakQuantity": 1, "price": 0.801072},
+                        ],
+                    }
+                ],
+            }
+        )
+        client._client = transport
+        agg = AggregatedPart(
+            part_number="TPS61041-Q1",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=10000,
+        )
+
+        offer = price_part_via_ti(agg, client, query_terms=["TPS61041QDBVRQ1"])
+
+        assert offer.extended_price == pytest.approx(8010.72)
+        assert offer.purchased_quantity == 10000
+        assert offer.surplus_quantity == 0
+        assert offer.packaging_mode == "Mixed Packaging"
+        assert offer.full_reel_quantity == 3000
+        assert offer.order_plan == "3 reels x 3000 + 1000 cut tape"
+        assert offer.pricing_strategy == "mixed packaging"
+        assert len(offer.purchase_legs) == 2
 
     def test_respects_minimum_order_quantity(self):
         client = TIClient(client_id="client-id", client_secret="client-secret")

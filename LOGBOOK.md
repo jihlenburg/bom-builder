@@ -13,7 +13,7 @@
 - Added persistent Mouser search caching in `lookup_cache.py` with a default 24-hour TTL and CLI controls for disabling or retuning the cache window.
 - Began strengthening the Mouser resolver to prefer buyable orderable parts, retry transient API failures, and reduce unnecessary manual-review flags.
 - Fixed TI package extraction for `8-SOT-23` / reel-vs-tube temperature-sensor variants, which reduced the LUPA BOM manual-review set from 10 parts to 8 and corrected the console summary split between fuzzy-resolved and true review-required matches.
-- Made the Mouser pacing logic cache-aware so cached runs no longer pay the per-part `--delay` or inter-pass lookup sleeps when no network request is needed.
+- Made the Mouser pacing logic cache-aware so cached runs no longer pay the per-part `--mouser-delay` or inter-pass lookup sleeps when no network request is needed.
 - Added an interactive terminal resolver with persistent saved selections in `resolution_store.py`, and expanded TI package decoding so the chooser can present package-aware candidate lists such as `SOIC-8`, `WSON-2`, `X2SON-4`, `HSOIC-8`, and `VSSOP-19`.
 - Added an optional OpenAI reranker in `ai_resolver.py` that runs before interactive review, uses the Responses API with structured JSON output, and falls back cleanly when the AI abstains or the API key is invalid.
 - Reverted secret handling back to a simple `.env` plus environment-variable workflow, removed the dedicated launcher/keychain registry path, and simplified the secret-loading docs and tests to match.
@@ -43,3 +43,6 @@
 - Added per-run stdout/stderr trace capture plus a cleaner live console layout that emphasizes source, order plan, unit price, and line total while pushing diagnostics into short note lines instead of overloaded suffixes.
 - Hardened AI reranking degradation handling so invalid OpenAI payloads, auth failures, rate limits, and transport errors cleanly fall back to deterministic resolution with one-shot notices instead of repeated raw warnings.
 - Cleaned the repository state by removing stale local artifacts, tightening ignore rules for Excel lock files, regenerating the API index, and re-verifying the full test suite before preparing the next commit.
+- Added a manufacturing-biased purchase-plan preference in `optimizer.py` so reel-heavy plans can beat all-cut-tape plans within a small configurable cost delta, and taught the TI adapter to synthesize full-reel plus cut-tape families from TI store packaging metadata when the store response exposes standard pack quantity and carrier options.
+- Expanded the persistent cache in `lookup_cache.py` beyond Mouser so Digi-Key and TI can reuse product/pricing responses across runs, and scoped the CLI `--mouser-delay` back to live Mouser traffic instead of sleeping after every TI or Digi-Key request.
+- Extended the persistent cache to Mouser product-page and manufacturer-page packaging fallbacks, and split paced Mouser traffic from auxiliary fallback fetches so `--mouser-delay` no longer fires after non-Mouser enrichment requests.

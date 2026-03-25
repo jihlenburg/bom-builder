@@ -20,6 +20,20 @@ Runtime UX notes:
   context is needed.
 - AI reranking failures should degrade into one-shot fallback notices instead
   of repeated raw warning lines in the middle of a run.
+- Purchase-plan selection now includes a small manufacturing-friendly bias so
+  reel-heavy plans can win when they are materially better for the line and
+  still within the configured cost delta.
+- The persistent cache is now shared across Mouser, Digi-Key, and TI response
+  payloads, including Mouser product-page and manufacturer-page packaging
+  fallback results.
+- `python main.py --flush` clears the shared distributor cache DB plus orphaned
+  temp files, while `python main.py --flush-resolutions` also wipes the saved
+  manual-resolution store for a true clean slate.
+- `--mouser-delay` now keys off paced Mouser distributor traffic instead of
+  every auxiliary fallback fetch, so manufacturer-page enrichment no longer
+  slows unrelated lines.
+- The CLI uses explicit Mouser-prefixed flags like `--mouser-api-key` and
+  `--mouser-delay`; `python main.py --help` shows the full runtime surface.
 
 Generated API documentation:
 

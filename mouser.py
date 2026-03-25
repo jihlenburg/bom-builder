@@ -21,7 +21,7 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -129,6 +129,83 @@ class MouserPackagingDetails:
     standard_pack_quantity: int | None = None
     full_reel_quantity: int | None = None
     full_reel_price_breaks: tuple[dict[str, Any], ...] = ()
+
+
+def _serialize_mouser_packaging_details(
+    details: MouserPackagingDetails | None,
+) -> dict[str, Any]:
+    """Return a JSON-serializable cache payload for Mouser packaging details."""
+    if details is None:
+        return {"found": False}
+    payload = asdict(details)
+    payload["full_reel_price_breaks"] = list(details.full_reel_price_breaks)
+    return {"found": True, "details": payload}
+
+
+def _deserialize_mouser_packaging_details(
+    payload: Any,
+) -> tuple[bool, MouserPackagingDetails | None]:
+    """Decode one cached Mouser packaging-details payload."""
+    if not isinstance(payload, dict) or "found" not in payload:
+        return False, None
+    if not payload.get("found"):
+        return True, None
+    raw_details = payload.get("details")
+    if not isinstance(raw_details, dict):
+        return True, None
+    raw_breaks = raw_details.get("full_reel_price_breaks") or []
+    break_rows = tuple(
+        row for row in raw_breaks
+        if isinstance(row, dict)
+    )
+    return (
+        True,
+        MouserPackagingDetails(
+            packaging_mode=str(raw_details.get("packaging_mode") or "").strip() or None,
+            packaging_source=str(raw_details.get("packaging_source") or "").strip() or None,
+            minimum_order_quantity=_extract_optional_int(raw_details.get("minimum_order_quantity")),
+            order_multiple=_extract_optional_int(raw_details.get("order_multiple")),
+            standard_pack_quantity=_extract_optional_int(raw_details.get("standard_pack_quantity")),
+            full_reel_quantity=_extract_optional_int(raw_details.get("full_reel_quantity")),
+            full_reel_price_breaks=break_rows,
+        ),
+    )
+
+
+def _serialize_manufacturer_packaging_details(
+    details: ManufacturerPackagingDetails | None,
+) -> dict[str, Any]:
+    """Return a JSON-serializable cache payload for manufacturer packaging details."""
+    if details is None:
+        return {"found": False}
+    return {
+        "found": True,
+        "details": asdict(details),
+    }
+
+
+def _deserialize_manufacturer_packaging_details(
+    payload: Any,
+) -> tuple[bool, ManufacturerPackagingDetails | None]:
+    """Decode one cached manufacturer packaging-details payload."""
+    if not isinstance(payload, dict) or "found" not in payload:
+        return False, None
+    if not payload.get("found"):
+        return True, None
+    raw_details = payload.get("details")
+    if not isinstance(raw_details, dict):
+        return True, None
+    return (
+        True,
+        ManufacturerPackagingDetails(
+            packaging_mode=str(raw_details.get("packaging_mode") or "").strip() or None,
+            packaging_source=str(raw_details.get("packaging_source") or "").strip() or None,
+            minimum_order_quantity=_extract_optional_int(raw_details.get("minimum_order_quantity")),
+            order_multiple=_extract_optional_int(raw_details.get("order_multiple")),
+            standard_pack_quantity=_extract_optional_int(raw_details.get("standard_pack_quantity")),
+            full_reel_quantity=_extract_optional_int(raw_details.get("full_reel_quantity")),
+        ),
+    )
 
 
 class _VisibleTextParser(HTMLParser):
@@ -432,7 +509,7 @@ class MouserClient:
         if not self.api_keys:
             raise ValueError(
                 (
-                    "Mouser API key not set. Use --api-key or set MOUSER_API_KEYS "
+                    "Mouser API key not set. Use --mouser-api-key or set MOUSER_API_KEYS "
                     "or MOUSER_API_KEY in the environment or .env."
                 )
             )
@@ -460,6 +537,9 @@ class MouserClient:
             )
         )
         self.network_requests = 0
+        self.paced_network_requests = 0
+        self.product_page_requests = 0
+        self.manufacturer_page_requests = 0
 
     def close(self) -> None:
         """Close any open cache/database and HTTP client resources."""
@@ -511,6 +591,7 @@ class MouserClient:
             try:
                 url = f"{MOUSER_API_URL}?apiKey={self.api_key}"
                 self.network_requests += 1
+                self.paced_network_requests += 1
                 resp = self._client.post(url, json=payload)
                 if _is_mouser_daily_limit_error(resp):
                     if self._switch_to_next_api_key("daily quota exhausted"):
@@ -593,15 +674,21 @@ class MouserClient:
             product_url = _candidate_product_detail_url(candidate)
             if product_url:
                 if product_url not in self._product_page_cache:
-                    page_details: MouserPackagingDetails | None = None
-                    try:
-                        self.network_requests += 1
-                        response = self._client.get(product_url, follow_redirects=True)
-                        response.raise_for_status()
-                        page_details = _packaging_details_from_product_page_html(response.text)
-                    except Exception as e:
-                        log.debug("Failed to load Mouser product page %s: %s", product_url, e)
+                    cached, page_details = self._cached_product_page_details(product_url)
+                    if not cached:
                         page_details = None
+                        try:
+                            self.network_requests += 1
+                            self.paced_network_requests += 1
+                            self.product_page_requests += 1
+                            response = self._client.get(product_url, follow_redirects=True)
+                            response.raise_for_status()
+                            page_details = _packaging_details_from_product_page_html(response.text)
+                            self._store_product_page_details(product_url, page_details)
+                        except Exception as e:
+                            log.debug("Failed to load Mouser product page %s: %s", product_url, e)
+                            page_details = None
+                            self._store_product_page_details(product_url, None)
                     self._product_page_cache[product_url] = page_details
                 details = _merge_packaging_details(
                     details,
@@ -622,20 +709,28 @@ class MouserClient:
             return details
 
         if manufacturer_url not in self._manufacturer_page_cache:
-            manufacturer_details: ManufacturerPackagingDetails | None = None
-            try:
-                self.network_requests += 1
-                response = self._client.get(manufacturer_url, follow_redirects=True)
-                response.raise_for_status()
-                manufacturer_details = manufacturer_packaging_details_from_html(
-                    str(candidate.get("Manufacturer") or ""),
-                    manufacturer_part_number=str(candidate.get("ManufacturerPartNumber") or "") or None,
-                    bom_part_number=bom_part_number,
-                    html=response.text,
-                )
-            except Exception as e:
-                log.debug("Failed to load manufacturer page %s: %s", manufacturer_url, e)
+            cached, manufacturer_details = self._cached_manufacturer_page_details(manufacturer_url)
+            if not cached:
                 manufacturer_details = None
+                try:
+                    self.network_requests += 1
+                    self.manufacturer_page_requests += 1
+                    response = self._client.get(manufacturer_url, follow_redirects=True)
+                    response.raise_for_status()
+                    manufacturer_details = manufacturer_packaging_details_from_html(
+                        str(candidate.get("Manufacturer") or ""),
+                        manufacturer_part_number=str(candidate.get("ManufacturerPartNumber") or "") or None,
+                        bom_part_number=bom_part_number,
+                        html=response.text,
+                    )
+                    self._store_manufacturer_page_details(
+                        manufacturer_url,
+                        manufacturer_details,
+                    )
+                except Exception as e:
+                    log.debug("Failed to load manufacturer page %s: %s", manufacturer_url, e)
+                    manufacturer_details = None
+                    self._store_manufacturer_page_details(manufacturer_url, None)
             self._manufacturer_page_cache[manufacturer_url] = manufacturer_details
 
         return _merge_packaging_details(
@@ -643,6 +738,62 @@ class MouserClient:
             _mouser_packaging_details_from_manufacturer_details(
                 self._manufacturer_page_cache[manufacturer_url]
             ),
+        )
+
+    def _cached_product_page_details(
+        self,
+        product_url: str,
+    ) -> tuple[bool, MouserPackagingDetails | None]:
+        """Return cached Mouser product-page packaging details when available."""
+        if self._cache is None:
+            return False, None
+        return _deserialize_mouser_packaging_details(
+            self._cache.get_provider_response(
+                "mouser_product_page_packaging",
+                product_url,
+            )
+        )
+
+    def _store_product_page_details(
+        self,
+        product_url: str,
+        details: MouserPackagingDetails | None,
+    ) -> None:
+        """Persist one Mouser product-page packaging-details result."""
+        if self._cache is None:
+            return
+        self._cache.set_provider_response(
+            "mouser_product_page_packaging",
+            product_url,
+            _serialize_mouser_packaging_details(details),
+        )
+
+    def _cached_manufacturer_page_details(
+        self,
+        manufacturer_url: str,
+    ) -> tuple[bool, ManufacturerPackagingDetails | None]:
+        """Return cached manufacturer-page packaging details when available."""
+        if self._cache is None:
+            return False, None
+        return _deserialize_manufacturer_packaging_details(
+            self._cache.get_provider_response(
+                "manufacturer_page_packaging",
+                manufacturer_url,
+            )
+        )
+
+    def _store_manufacturer_page_details(
+        self,
+        manufacturer_url: str,
+        details: ManufacturerPackagingDetails | None,
+    ) -> None:
+        """Persist one manufacturer-page packaging-details result."""
+        if self._cache is None:
+            return
+        self._cache.set_provider_response(
+            "manufacturer_page_packaging",
+            manufacturer_url,
+            _serialize_manufacturer_packaging_details(details),
         )
 
 
@@ -2329,7 +2480,7 @@ def price_all_parts(
 
     for i, agg in enumerate(parts, 1):
         print(f"  [{i}/{total}] Looking up {agg.part_number}...")
-        before_requests = getattr(client, "network_requests", None)
+        before_requests = _paced_request_count(client)
         priced = price_part(
             agg,
             client,
@@ -2369,9 +2520,7 @@ def price_all_parts(
 
         results.append(priced)
 
-        used_network = before_requests is None or (
-            getattr(client, "network_requests", before_requests) > before_requests
-        )
+        used_network = _paced_request_count(client) > before_requests
         if i < total and delay > 0 and used_network:
             time.sleep(delay)
 
@@ -2382,6 +2531,14 @@ def _lookup_is_cached(client: MouserClient, lookup_pass: LookupPass) -> bool:
     """Return whether the upcoming lookup pass can be served from cache."""
     checker = getattr(client, "has_cached_search", None)
     return bool(callable(checker) and checker(lookup_pass.search_term, lookup_pass.search_option))
+
+
+def _paced_request_count(client: Any) -> int:
+    """Return the request counter that should participate in Mouser pacing."""
+    paced = getattr(client, "paced_network_requests", None)
+    if paced is not None:
+        return int(paced)
+    return int(getattr(client, "network_requests", 0))
 
 
 def _mouser_error_details(response: httpx.Response) -> tuple[str, str]:

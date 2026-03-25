@@ -22,6 +22,7 @@ Current supported keys:
 - `DIGIKEY_LOCALE_SHIP_TO_COUNTRY`
 - `BOM_BUILDER_TARGET_CURRENCY`
 - `BOM_BUILDER_FX_OVERRIDES`
+- `BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT`
 - `TI_STORE_API_KEY`
 - `TI_STORE_API_SECRET`
 - `TI_STORE_PRICE_CURRENCY`
@@ -45,10 +46,11 @@ DIGIKEY_LOCALE_CURRENCY=EUR
 DIGIKEY_LOCALE_SHIP_TO_COUNTRY=de
 BOM_BUILDER_TARGET_CURRENCY=EUR
 BOM_BUILDER_FX_OVERRIDES=
+BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT=0.5
 TI_STORE_API_KEY=your-ti-store-api-key
 TI_STORE_API_SECRET=your-ti-store-api-secret
 TI_STORE_PRICE_CURRENCY=USD
-BOM_BUILDER_CACHE_DB=/absolute/path/to/mouser_cache.sqlite3
+BOM_BUILDER_CACHE_DB=/absolute/path/to/distributor_cache.sqlite3
 BOM_BUILDER_RESOLUTIONS_FILE=/absolute/path/to/resolutions.json
 BOM_BUILDER_TRACE_FILE=/absolute/path/to/latest-run.log
 BOM_BUILDER_TRACE_DIR=/absolute/path/to/run-traces
@@ -69,6 +71,12 @@ foreign exchange reference rates. `BOM_BUILDER_FX_OVERRIDES` accepts manual
 overrides such as `USD:EUR=0.92` when you want deterministic tests or you need
 to run without a live FX lookup.
 
+`BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT` controls the optimizer's willingness
+to prefer more manufacturing-friendly packaging plans over the absolute
+cheapest line. The default runtime value is `0.5`, which lets reel-heavy or
+other line-friendly plans win when they stay within `0.5%` of the cheapest
+valid line cost.
+
 `TI_STORE_API_KEY` and `TI_STORE_API_SECRET` enable TI direct pricing for
 Texas Instruments parts through the TI Store Inventory and Pricing API.
 `TI_STORE_PRICE_CURRENCY` controls the currency requested from TI, and the
@@ -83,7 +91,10 @@ available as the single-key compatibility fallback.
 
 `BOM_BUILDER_CACHE_DB` and `BOM_BUILDER_RESOLUTIONS_FILE` are optional file
 path overrides, not directory-only settings. If they are omitted or set to an
-empty value, the application uses its built-in platform defaults instead.
+empty value, the application uses its built-in platform defaults instead. The
+cache database is shared across Mouser, Digi-Key, and TI responses, even
+though the historical default filename still uses `mouser_cache.sqlite3` for
+backward compatibility.
 
 `BOM_BUILDER_TRACE_FILE` and `BOM_BUILDER_TRACE_DIR` are optional tracing
 paths. Set `BOM_BUILDER_TRACE_FILE` when you want one exact transcript file for
@@ -98,6 +109,21 @@ Default locations:
 - Windows cache DB: `%LOCALAPPDATA%\\bom-builder\\mouser_cache.sqlite3`
 - macOS/Linux resolutions: `~/.config/bom-builder/resolutions.json` unless `XDG_CONFIG_HOME` is set
 - Windows resolutions: `%APPDATA%\\bom-builder\\resolutions.json`
+
+If you want saved manual resolutions to be project-local instead of shared
+across all BOM Builder runs on the machine, point `BOM_BUILDER_RESOLUTIONS_FILE`
+at a repo-local path in `.env`, for example:
+
+```bash
+BOM_BUILDER_RESOLUTIONS_FILE=.bom-builder/resolutions.json
+```
+
+CLI maintenance helpers:
+
+- `python main.py --flush` removes the shared distributor cache DB, SQLite
+  sidecars, and orphaned temp files, but keeps saved manual resolutions.
+- `python main.py --flush-resolutions` also deletes the saved manual-resolution
+  file for the configured `BOM_BUILDER_RESOLUTIONS_FILE` path.
 
 ## Local Development
 
