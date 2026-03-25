@@ -21,6 +21,7 @@ runtime code.
    manufacturer_packaging
    models
    mouser
+   nxp
    optimizer
    package
    report

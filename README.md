@@ -1,8 +1,15 @@
 # BOM Builder
 
 A Python CLI tool for building and pricing electrical Bills of Materials
-(eBOMs) across Mouser, Digi-Key, and TI direct for TI parts, with automatic selection of the cheapest
-confident distributor offer per BOM line.
+(eBOMs) across Mouser, Digi-Key, TI direct for TI parts, and NXP direct for
+NXP parts, with automatic selection of the best confident distributor offer per
+BOM line after cross-supplier price, surplus, and packaging-plan comparison.
+
+Current release: `1.0.0.0`
+
+Versioning policy: BOM Builder now uses conservative four-part release numbers.
+Only clearly user-visible or behaviorally meaningful changes should advance the
+published version.
 
 ## Features
 
@@ -20,10 +27,12 @@ confident distributor offer per BOM line.
 - Optional OpenAI reranker (`--ai-resolve`) for the remaining ambiguous candidates
 - Optional Digi-Key Product Information V4 pricing with automatic cheapest-offer selection
 - Optional TI Store Inventory and Pricing API pricing for Texas Instruments parts
+- Optional NXP direct-store pricing for NXP / Freescale parts with fail-closed browser-backed parsing
 - Price-break-aware overbuy selection that can choose full reels or larger packs when they reduce actual spend
 - Mixed-packaging optimization for Mouser, including reel-plus-remainder plans when they reduce total spend
 - Central distributor-agnostic purchase-plan optimizer shared by Mouser, Digi-Key, and TI offer selection
 - Small manufacturing-biased plan preference so reel-heavy buys can beat all-cut-tape plans when line cost stays within a configurable delta
+- Surplus-aware cross-supplier scoring so aggressive overbuy can lose to a slightly more expensive competing supplier
 - CSV/Excel output includes buyer-facing order-plan columns such as batch size, batch count, shortage, and reel plan
 - Optional per-run trace transcript that captures exactly what this process wrote to stdout/stderr
 - Compact live console output with buyer-facing order plans, per-line pricing, and graceful one-shot AI fallback notices
@@ -56,6 +65,7 @@ DIGIKEY_LOCALE_SHIP_TO_COUNTRY=de
 BOM_BUILDER_TARGET_CURRENCY=EUR
 BOM_BUILDER_FX_OVERRIDES=
 BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT=0.5
+BOM_BUILDER_SURPLUS_PENALTY_FACTOR=0.25
 TI_STORE_API_KEY=your-ti-store-api-key
 TI_STORE_API_SECRET=your-ti-store-api-secret
 TI_STORE_PRICE_CURRENCY=USD
@@ -101,6 +111,12 @@ plan is available. The default runtime value is `0.5`, which means BOM Builder
 may prefer reel-heavy or otherwise line-friendly packaging when the plan stays
 within `0.5%` of the cheapest valid option for that BOM line.
 
+`BOM_BUILDER_SURPLUS_PENALTY_FACTOR` controls the cross-supplier surplus
+penalty used during final offer selection. The default runtime value is `0.25`,
+which means supplier-driven extra spare quantity is penalized at `25%` of the
+best competing supplier's effective unit price when BOM Builder compares
+otherwise valid offers from different suppliers.
+
 For TI direct pricing, `TI_STORE_API_KEY` and `TI_STORE_API_SECRET` enable the
 TI Store Inventory and Pricing API integration for BOM lines whose
 manufacturer is Texas Instruments / `TI`. The TI store API returns
@@ -108,6 +124,13 @@ currency-tagged price-break schedules, and `TI_STORE_PRICE_CURRENCY` controls
 which currency is requested from TI. The runtime defaults that request
 currency to `USD` when no override is set. Legacy `TI_PRODUCT_API_*` variable
 names are still accepted as a compatibility fallback.
+
+NXP direct pricing does not currently require a separate API key. BOM Builder
+uses a browser-backed parser against the public NXP store for BOM lines whose
+manufacturer is `NXP` or `Freescale`. If NXP changes its store/site format and
+the parser becomes uncertain, the NXP adapter fails closed for that run and
+stops participating in automatic supplier selection instead of returning
+untrusted pricing.
 
 Default locations:
 
@@ -178,6 +201,9 @@ python main.py -d designs/board.json -u 1000 --mouser-delay 2.0
 # Show the full CLI reference
 python main.py --help
 
+# Show the current BOM Builder release
+python main.py --version
+
 # Flush the shared distributor cache and orphaned temp files
 python main.py --flush
 
@@ -197,7 +223,7 @@ python main.py -d LUPA_48VGen_BOM.json -u 1000 --interactive
 python main.py -d LUPA_48VGen_BOM.json -u 1000 --ai-resolve --interactive
 
 # If Digi-Key credentials are configured, both distributors are queried and
-# the cheapest confident offer is selected automatically
+# the best confident offer is selected automatically
 python main.py -d LUPA_48VGen_BOM.json -u 1000 -f excel -o bom.xlsx
 
 # If TI Store API credentials are configured, TI parts are also checked
@@ -235,6 +261,7 @@ python scripts/capture_live_fixtures.py
 | `--ai-confidence-threshold` | Minimum AI confidence required to auto-accept a reranked candidate |
 | `-v`, `--verbose` | Write full diagnostic trace output to stdout |
 | `--trace-file` | Mirror this run's stdout/stderr transcript into a file |
+| `--version` | Show the BOM Builder release version and exit |
 | `-h`, `--help` | Show the built-in CLI help and exit |
 
 ## Design JSON Format
@@ -284,15 +311,22 @@ When `--interactive` is enabled, the CLI stops only on those review-required par
 When `--ai-resolve` is enabled, the resolver inserts an OpenAI reranking step before interactive review. The AI only chooses from the existing Mouser candidate shortlist and abstains when the BOM text is still underspecified.
 
 When Digi-Key credentials are configured, BOM Builder reuses the best resolved
-manufacturer part number from the Mouser workflow, asks Digi-Key for quantity
-pricing on that same part, and then keeps the cheapest priced offer that does
-not require manual review. If Digi-Key is unavailable or returns no valid
-price, the Mouser result remains selected.
+manufacturer part number from the Mouser workflow when that match is already
+confirmed, asks Digi-Key for quantity pricing on that same part, and then keeps
+the best priced offer that does not require manual review. If Digi-Key is
+unavailable or returns no valid price, the Mouser result remains selected.
 
 When TI Store API credentials are configured, BOM Builder also queries TI
 direct pricing for TI-manufactured parts. TI direct pricing is compared the
 same way as any other normalized offer, including MOQ, order limit, price
 break, and full-reel metadata when TI exposes those constraints.
+
+When NXP direct pricing is available, BOM Builder also checks the public NXP
+store for NXP / Freescale-manufactured parts. Manufacturer-direct stores are
+treated as authoritative for their own orderables, so BOM Builder queries the
+original BOM part number first and can still pass through a distributor-derived
+manufacturer orderable as a fallback term even when that distributor-side match
+remains under review.
 
 Direct single-part lookup mode is useful for debugging distributor behavior on
 one MPN at a time. It runs through the same cache, resolver, AI, interactive,
@@ -318,6 +352,7 @@ bom-builder/
 ├── digikey.py            # Digi-Key V4 client with locale-aware pricing helpers
 ├── fx.py                 # FX normalization for cross-distributor comparison
 ├── manufacturer_packaging.py  # Manufacturer fallback packaging parsers
+├── nxp.py                # NXP direct-store client with fail-closed parsing
 ├── optimizer.py          # Shared purchase-plan optimization logic
 ├── ti.py                 # TI Store Inventory and Pricing API client and pricing helpers
 ├── manufacturers.yaml    # Manufacturer name aliases

@@ -4,8 +4,8 @@ This guide covers the one-time setup required before BOM Builder can use
 Digi-Key's account-aware Product Information V4 endpoints.
 
 Once these credentials are configured, the normal BOM runtime automatically
-lets Digi-Key compete with Mouser and selects the cheapest confident priced
-offer per BOM line.
+lets Digi-Key compete with Mouser and selects the best confident priced offer
+per BOM line.
 
 ## Why This Exists
 

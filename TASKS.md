@@ -38,4 +38,6 @@ Active tasks should be recorded here while work is in progress and checked off o
 - [x] Clean the repository, refresh docs, and remove stray local build/runtime artifacts
 - [x] Prefer manufacturing-friendly reel-heavy plans when they stay within a small configurable cost delta
 - [x] Expand the persistent cache to Digi-Key and TI responses, and scope `--mouser-delay` back to live Mouser traffic
+- [x] Add fail-closed NXP direct pricing and surplus-aware cross-supplier supplier scoring
+- [x] Introduce explicit project versioning and cut the `1.0.0.0` release baseline
 - [ ] Tighten deterministic Mouser resolution and ambiguity handling

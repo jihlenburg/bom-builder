@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import main
+from config import PROJECT_VERSION
 from main import _match_result_label, build_input_designs, resolve_output_format
 from models import AggregatedPart, BomSummary, DistributorOffer, MatchMethod, PricedPart
 
@@ -88,6 +89,14 @@ class TestParseArgs:
         assert "--flush-resolutions" in output
         assert "--api-key" not in output
         assert "--delay" not in output
+
+    def test_version_option_prints_release(self, capsys):
+        with pytest.raises(SystemExit) as excinfo:
+            main.parse_args(["--version"])
+
+        output = capsys.readouterr().out.strip()
+        assert excinfo.value.code == 0
+        assert output == f"main.py {PROJECT_VERSION}"
 
     def test_accepts_single_part_mode(self):
         args = main.parse_args(
@@ -210,6 +219,27 @@ class TestParseArgs:
         terms = main._ti_query_terms(agg, priced)
 
         assert terms == ["TPS61041-Q1"]
+
+    def test_ti_query_terms_include_review_candidate_as_manufacturer_fallback(self):
+        agg = AggregatedPart(
+            part_number="TLIN4029A-Q1",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=1000,
+        )
+        priced = PricedPart(
+            part_number="TLIN4029A-Q1",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=1000,
+            manufacturer_part_number="TLIN4029ADRQ1",
+            match_method=MatchMethod.FUZZY,
+            review_required=True,
+        )
+
+        terms = main._ti_query_terms(agg, priced)
+
+        assert terms == ["TLIN4029A-Q1", "TLIN4029ADRQ1"]
 
     def test_requires_manufacturer_for_single_part_mode(self):
         with pytest.raises(SystemExit):
@@ -473,6 +503,70 @@ class TestOfferSelection:
 
         assert selected is not None
         assert selected.distributor == "Digi-Key"
+
+    def test_prefers_lower_surplus_supplier_when_cheapest_overbuys_too_much(self, monkeypatch):
+        monkeypatch.setenv("BOM_BUILDER_SURPLUS_PENALTY_FACTOR", "0.25")
+        offers = [
+            DistributorOffer(
+                distributor="NXP",
+                distributor_part_number="NXP-PART",
+                extended_price=100.0,
+                unit_price=1.0,
+                currency="EUR",
+                required_quantity=100,
+                purchased_quantity=200,
+                surplus_quantity=100,
+                match_method=MatchMethod.EXACT,
+            ),
+            DistributorOffer(
+                distributor="Digi-Key",
+                distributor_part_number="DGK-PART",
+                extended_price=120.0,
+                unit_price=1.2,
+                currency="EUR",
+                required_quantity=100,
+                purchased_quantity=100,
+                surplus_quantity=0,
+                match_method=MatchMethod.EXACT,
+            ),
+        ]
+
+        selected = main._select_preferred_offer(offers)
+
+        assert selected is not None
+        assert selected.distributor == "Digi-Key"
+
+    def test_keeps_cheapest_supplier_when_surplus_penalty_is_outweighed(self, monkeypatch):
+        monkeypatch.setenv("BOM_BUILDER_SURPLUS_PENALTY_FACTOR", "0.25")
+        offers = [
+            DistributorOffer(
+                distributor="NXP",
+                distributor_part_number="NXP-PART",
+                extended_price=100.0,
+                unit_price=1.0,
+                currency="EUR",
+                required_quantity=100,
+                purchased_quantity=140,
+                surplus_quantity=40,
+                match_method=MatchMethod.EXACT,
+            ),
+            DistributorOffer(
+                distributor="Digi-Key",
+                distributor_part_number="DGK-PART",
+                extended_price=120.0,
+                unit_price=1.2,
+                currency="EUR",
+                required_quantity=100,
+                purchased_quantity=100,
+                surplus_quantity=0,
+                match_method=MatchMethod.EXACT,
+            ),
+        ]
+
+        selected = main._select_preferred_offer(offers)
+
+        assert selected is not None
+        assert selected.distributor == "NXP"
 
 
 class TestMultiDistributorPricing:
@@ -747,6 +841,50 @@ class TestMultiDistributorPricing:
 
         assert main._compared_cheapest_note(priced) is None
 
+    def test_lookup_note_explains_surplus_adjusted_choice(self, monkeypatch):
+        monkeypatch.setenv("BOM_BUILDER_SURPLUS_PENALTY_FACTOR", "0.25")
+        priced = PricedPart(
+            part_number="PART1",
+            manufacturer="NXP",
+            quantity_per_unit=1,
+            total_quantity=100,
+            distributor="Digi-Key",
+            distributor_part_number="DGK-PART",
+            currency="EUR",
+        )
+        priced.offers = [
+            DistributorOffer(
+                distributor="NXP",
+                distributor_part_number="NXP-PART",
+                extended_price=100.0,
+                unit_price=1.0,
+                currency="EUR",
+                required_quantity=100,
+                purchased_quantity=200,
+                surplus_quantity=100,
+                match_method=MatchMethod.EXACT,
+                review_required=False,
+            ),
+            DistributorOffer(
+                distributor="Digi-Key",
+                distributor_part_number="DGK-PART",
+                extended_price=120.0,
+                unit_price=1.2,
+                currency="EUR",
+                required_quantity=100,
+                purchased_quantity=100,
+                surplus_quantity=0,
+                match_method=MatchMethod.EXACT,
+                review_required=False,
+            ),
+        ]
+
+        note = main._lookup_note(priced)
+
+        assert note is not None
+        assert "surplus-adjusted over NXP" in note
+        assert "-100 spare" in note
+
     def test_print_lookup_status_uses_compact_buyer_facing_layout(self, capsys):
         priced = PricedPart(
             part_number="PART1",
@@ -972,6 +1110,126 @@ class TestMultiDistributorPricing:
 
         assert len(results) == 1
         assert captured_terms == ["TPS61041-Q1"]
+
+    def test_uses_bom_part_number_for_nxp_lookup_when_manufacturer_is_nxp(self, monkeypatch):
+        agg = AggregatedPart(
+            part_number="KW47B42ZB7AFTB",
+            manufacturer="NXP",
+            quantity_per_unit=1,
+            total_quantity=100,
+        )
+
+        def fake_price_mouser_part(*_args, **_kwargs):
+            return PricedPart.from_aggregated(agg)
+
+        class DummyMouserClient:
+            network_requests = 0
+            paced_network_requests = 0
+
+        class DummyNXPClient:
+            network_requests = 0
+
+            def consume_runtime_notices(self):
+                return []
+
+        captured_terms: list[str] = []
+
+        monkeypatch.setattr(main, "price_mouser_part", fake_price_mouser_part)
+        monkeypatch.setattr(main, "convert_offers_currency", lambda offers, *_: offers)
+
+        def fake_price_part_via_nxp(_agg, _client, **kwargs):
+            captured_terms.extend(kwargs.get("query_terms") or [])
+            return DistributorOffer(distributor="NXP", lookup_error="not priced")
+
+        monkeypatch.setattr(main, "price_part_via_nxp", fake_price_part_via_nxp)
+
+        results = main._price_parts_across_distributors(
+            [agg],
+            DummyMouserClient(),
+            digikey_client=None,
+            ti_client=None,
+            fx_rate_provider=object(),
+            comparison_currency="EUR",
+            delay=0.0,
+            interactive=False,
+            resolution_store=object(),
+            ai_resolver=None,
+            run_started_at=0.0,
+            nxp_client=DummyNXPClient(),
+        )
+
+        assert len(results) == 1
+        assert captured_terms == ["KW47B42ZB7AFTB"]
+
+    def test_prints_nxp_runtime_notice_once(self, monkeypatch, capsys):
+        parts = [
+            AggregatedPart(
+                part_number="KW47B42ZB7AFTB",
+                manufacturer="NXP",
+                quantity_per_unit=1,
+                total_quantity=100,
+            ),
+            AggregatedPart(
+                part_number="NCJ3310AHN/0J",
+                manufacturer="NXP",
+                quantity_per_unit=1,
+                total_quantity=100,
+            ),
+        ]
+
+        def fake_price_mouser_part(agg, *_args, **_kwargs):
+            return PricedPart.from_aggregated(agg)
+
+        class DummyMouserClient:
+            network_requests = 0
+            paced_network_requests = 0
+
+        class DummyNXPClient:
+            network_requests = 0
+
+            def __init__(self):
+                self._consumed = False
+
+            def consume_runtime_notices(self):
+                if self._consumed:
+                    return []
+                self._consumed = True
+                return ["NXP direct disabled for this run; continuing without NXP direct pricing"]
+
+        monkeypatch.setattr(main, "price_mouser_part", fake_price_mouser_part)
+        monkeypatch.setattr(main, "convert_offers_currency", lambda offers, *_: offers)
+        monkeypatch.setattr(
+            main,
+            "price_part_via_nxp",
+            lambda *_args, **_kwargs: DistributorOffer(
+                distributor="NXP",
+                lookup_error="NXP direct unavailable for this run",
+            ),
+        )
+
+        results = main._price_parts_across_distributors(
+            parts,
+            DummyMouserClient(),
+            digikey_client=None,
+            ti_client=None,
+            fx_rate_provider=object(),
+            comparison_currency="EUR",
+            delay=0.0,
+            interactive=False,
+            resolution_store=object(),
+            ai_resolver=None,
+            run_started_at=0.0,
+            nxp_client=DummyNXPClient(),
+        )
+
+        assert len(results) == 2
+        output = capsys.readouterr().out
+        assert (
+            output.count(
+                "info: NXP direct disabled for this run; continuing without NXP direct pricing"
+            )
+            == 1
+        )
 
     def test_delay_is_applied_when_mouser_uses_live_network(self, monkeypatch):
         parts = [

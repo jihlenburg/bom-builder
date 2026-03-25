@@ -23,6 +23,7 @@ Current supported keys:
 - `BOM_BUILDER_TARGET_CURRENCY`
 - `BOM_BUILDER_FX_OVERRIDES`
 - `BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT`
+- `BOM_BUILDER_SURPLUS_PENALTY_FACTOR`
 - `TI_STORE_API_KEY`
 - `TI_STORE_API_SECRET`
 - `TI_STORE_PRICE_CURRENCY`
@@ -47,6 +48,7 @@ DIGIKEY_LOCALE_SHIP_TO_COUNTRY=de
 BOM_BUILDER_TARGET_CURRENCY=EUR
 BOM_BUILDER_FX_OVERRIDES=
 BOM_BUILDER_MANUFACTURING_PREFERENCE_PCT=0.5
+BOM_BUILDER_SURPLUS_PENALTY_FACTOR=0.25
 TI_STORE_API_KEY=your-ti-store-api-key
 TI_STORE_API_SECRET=your-ti-store-api-secret
 TI_STORE_PRICE_CURRENCY=USD
@@ -77,11 +79,21 @@ cheapest line. The default runtime value is `0.5`, which lets reel-heavy or
 other line-friendly plans win when they stay within `0.5%` of the cheapest
 valid line cost.
 
+`BOM_BUILDER_SURPLUS_PENALTY_FACTOR` controls the final cross-supplier spare
+penalty. The default runtime value is `0.25`, which means supplier-driven
+extra spare quantity is penalized at `25%` of the best competing supplier's
+effective unit price during final supplier selection.
+
 `TI_STORE_API_KEY` and `TI_STORE_API_SECRET` enable TI direct pricing for
 Texas Instruments parts through the TI Store Inventory and Pricing API.
 `TI_STORE_PRICE_CURRENCY` controls the currency requested from TI, and the
 runtime defaults that request to `USD` when no override is set. Legacy
 `TI_PRODUCT_API_*` variable names remain accepted as a compatibility fallback.
+
+NXP direct pricing currently does not require a separate credential. BOM
+Builder uses a browser-backed parser against the public NXP store only for
+`NXP` / `Freescale` manufacturer lines, and the adapter disables itself for
+the rest of the run if the store payload or page structure becomes uncertain.
 
 `MOUSER_API_KEYS` is the preferred format when you have multiple Mouser API
 keys. List them in priority order, separated by commas. The runtime will use

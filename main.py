@@ -28,6 +28,7 @@ from ai_resolver import DEFAULT_AI_MODEL, OpenAIResolver
 from bom import aggregate_parts, load_design
 from config import (
     DEFAULT_ATTRITION,
+    PROJECT_VERSION,
     install_console_trace,
     resolve_trace_path,
     setup_logging,
@@ -45,6 +46,7 @@ from models import (
     PricedPart,
 )
 from mouser import MouserClient, price_part as price_mouser_part
+from nxp import NXPClient, nxp_is_available, nxp_supports_manufacturer, price_part_via_nxp
 from report import write_csv, write_excel, write_json
 from resolution_store import ResolutionStore, default_resolution_store_path
 from ti import TIClient, price_part_via_ti, ti_is_configured, ti_supports_manufacturer
@@ -55,6 +57,7 @@ WRITERS: dict[str, Callable[[list[PricedPart], Path, BomSummary], None]] = {
     "excel": write_excel,
     "json": write_json,
 }
+DEFAULT_SURPLUS_PENALTY_FACTOR = 0.25
 
 
 def _positive_int(value: str) -> int:
@@ -90,8 +93,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         Parsed command-line arguments ready to pass into :func:`run`.
     """
     parser = argparse.ArgumentParser(
+        prog="main.py",
         add_help=True,
         description="Build and price an eBOM from design JSON files across supported distributors."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {PROJECT_VERSION}",
+        help="Show the BOM Builder release version and exit",
     )
     input_group = parser.add_mutually_exclusive_group(required=False)
     input_group.add_argument(
@@ -318,6 +328,7 @@ def _write_trace_header(
 
     header_lines = [
         "=== BOM Builder Trace ===",
+        f"Version: {PROJECT_VERSION}",
         f"Started: {datetime.now().astimezone().isoformat(timespec='seconds')}",
         f"PID: {os.getpid()}  PPID: {os.getppid()}",
         f"CWD: {Path.cwd()}",
@@ -487,20 +498,30 @@ def price_parts(
                     else nullcontext(None)
                 )
                 with ti_context as ti_client:
-                    with FXRateProvider() as fx_rate_provider:
-                        return _price_parts_across_distributors(
-                            aggregated,
-                            mouser_client,
-                            digikey_client=digikey_client,
-                            ti_client=ti_client,
-                            fx_rate_provider=fx_rate_provider,
-                            comparison_currency=resolve_target_currency(),
-                            delay=args.mouser_delay,
-                            run_started_at=run_started_at,
-                            interactive=args.interactive,
-                            resolution_store=resolution_store,
-                            ai_resolver=ai_resolver,
+                    nxp_context = (
+                        NXPClient(
+                            cache_enabled=not args.no_cache,
+                            cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
                         )
+                        if nxp_is_available()
+                        else nullcontext(None)
+                    )
+                    with nxp_context as nxp_client:
+                        with FXRateProvider() as fx_rate_provider:
+                            return _price_parts_across_distributors(
+                                aggregated,
+                                mouser_client,
+                                digikey_client=digikey_client,
+                                ti_client=ti_client,
+                                nxp_client=nxp_client,
+                                fx_rate_provider=fx_rate_provider,
+                                comparison_currency=resolve_target_currency(),
+                                delay=args.mouser_delay,
+                                run_started_at=run_started_at,
+                                interactive=args.interactive,
+                                resolution_store=resolution_store,
+                                ai_resolver=ai_resolver,
+                            )
 
 
 def _price_parts_across_distributors(
@@ -516,6 +537,7 @@ def _price_parts_across_distributors(
     resolution_store: ResolutionStore,
     ai_resolver: OpenAIResolver | None,
     run_started_at: float | None = None,
+    nxp_client: NXPClient | None = None,
 ) -> list[PricedPart]:
     """Resolve prices for each BOM line across all configured distributors."""
     results: list[PricedPart] = []
@@ -527,6 +549,7 @@ def _price_parts_across_distributors(
         lookup_started_at = time.perf_counter()
         elapsed_before_lookup = lookup_started_at - run_started_at
         source_timings: list[tuple[str, float]] = []
+        runtime_notices: list[str] = []
         print(
             f"  [{i}/{total} +{_format_elapsed_clock(elapsed_before_lookup)}] "
             f"Looking up {agg.part_number}..."
@@ -563,6 +586,18 @@ def _price_parts_across_distributors(
                 )
             )
             source_timings.append(("ti", time.perf_counter() - ti_started_at))
+        nxp_terms = _manufacturer_direct_query_terms(agg, priced)
+        if nxp_client is not None and nxp_supports_manufacturer(agg.manufacturer) and nxp_terms:
+            nxp_started_at = time.perf_counter()
+            priced.offers.append(
+                price_part_via_nxp(
+                    agg,
+                    nxp_client,
+                    query_terms=nxp_terms,
+                )
+            )
+            source_timings.append(("nxp", time.perf_counter() - nxp_started_at))
+            runtime_notices.extend(nxp_client.consume_runtime_notices())
         priced.offers = convert_offers_currency(
             priced.offers,
             comparison_currency,
@@ -577,6 +612,7 @@ def _price_parts_across_distributors(
             part_duration=time.perf_counter() - lookup_started_at,
             source_timings=source_timings,
         )
+        _print_runtime_notices(runtime_notices)
         results.append(priced)
 
         used_live_mouser = (
@@ -616,16 +652,16 @@ def _manufacturer_direct_query_terms(
     """Return authoritative query terms for a manufacturer-direct storefront.
 
     Manufacturer stores should resolve their own public part numbers. The
-    original BOM part number is therefore queried first, while a separately
-    confirmed manufacturer orderable can be used as a fallback term.
+    original BOM part number is therefore queried first. When another resolver
+    has already surfaced a manufacturer orderable, that part number is still a
+    useful fallback term even if the distributor-side match remains under
+    manual review, because the manufacturer store itself is authoritative and
+    can confirm or reject it directly.
     """
     terms: list[str] = []
     if agg.part_number:
         terms.append(agg.part_number)
-    if (
-        _has_confirmed_manufacturer_part_number(priced)
-        and priced.manufacturer_part_number not in terms
-    ):
+    if priced.manufacturer_part_number and priced.manufacturer_part_number not in terms:
         terms.append(priced.manufacturer_part_number)
     return terms
 
@@ -654,20 +690,34 @@ def _select_preferred_offer(
 
     confident_priced = [offer for offer in offers if offer.is_priced and not offer.review_required]
     if confident_priced:
-        return _select_by_price_in_currency_group(confident_priced)
+        return _select_by_supplier_score_in_currency_group(confident_priced)
 
     priced = [offer for offer in offers if offer.is_priced]
     if priced:
-        return _select_by_price_in_currency_group(priced)
+        return _select_by_supplier_score_in_currency_group(priced)
 
     non_review = [offer for offer in offers if not offer.review_required]
     return non_review[0] if non_review else offers[0]
 
 
-def _select_by_price_in_currency_group(
+def resolve_surplus_penalty_factor(value: float | None = None) -> float:
+    """Return the configured surplus-penalty factor for cross-supplier selection."""
+    if value is not None:
+        return max(value, 0.0)
+
+    raw = os.getenv("BOM_BUILDER_SURPLUS_PENALTY_FACTOR", "").strip()
+    if not raw:
+        return DEFAULT_SURPLUS_PENALTY_FACTOR
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return DEFAULT_SURPLUS_PENALTY_FACTOR
+
+
+def _priced_offers_in_primary_currency_group(
     offers: list[DistributorOffer],
-) -> DistributorOffer:
-    """Return the cheapest offer within the chosen comparable currency group."""
+) -> list[DistributorOffer]:
+    """Return the subset of priced offers that should be compared directly."""
     currencies = {offer.currency or "" for offer in offers}
     comparable = offers
     if len(currencies) > 1:
@@ -675,13 +725,117 @@ def _select_by_price_in_currency_group(
         comparable = [
             offer for offer in offers if (offer.currency or "") == (primary_currency or "")
         ] or offers
+    return comparable
+
+
+def _offer_surplus_quantity(offer: DistributorOffer) -> int:
+    """Return the effective purchased surplus for one offer."""
+    if offer.surplus_quantity is not None:
+        return max(offer.surplus_quantity, 0)
+    required = offer.required_quantity or 0
+    purchased = offer.purchased_quantity if offer.purchased_quantity is not None else required
+    return max(purchased - required, 0)
+
+
+def _offer_effective_unit_price(offer: DistributorOffer) -> float:
+    """Return a usable per-part price for selection heuristics."""
+    if offer.unit_price is not None:
+        return offer.unit_price
+    purchased = offer.purchased_quantity or offer.required_quantity or 0
+    if purchased <= 0 or offer.extended_price is None:
+        return 0.0
+    return offer.extended_price / purchased
+
+
+def _best_alternative_supplier_offer(
+    offer: DistributorOffer,
+    offers: list[DistributorOffer],
+) -> DistributorOffer | None:
+    """Return the cheapest priced offer from a different supplier."""
+    if not offer.distributor:
+        return None
+
+    alternatives = [
+        candidate
+        for candidate in offers
+        if candidate.is_priced
+        and candidate.distributor
+        and candidate.distributor != offer.distributor
+    ]
+    if not alternatives:
+        return None
+    return min(
+        alternatives,
+        key=lambda candidate: (
+            float("inf") if candidate.extended_price is None else candidate.extended_price,
+            _offer_surplus_quantity(candidate),
+            candidate.distributor.lower(),
+        ),
+    )
+
+
+def _surplus_adjusted_extended_price(
+    offer: DistributorOffer,
+    offers: list[DistributorOffer],
+    *,
+    penalty_factor: float,
+) -> float:
+    """Return one offer's surplus-adjusted effective spend for supplier selection."""
+    base_cost = float("inf") if offer.extended_price is None else offer.extended_price
+    if penalty_factor <= 0:
+        return base_cost
+
+    alternative = _best_alternative_supplier_offer(offer, offers)
+    if alternative is None:
+        return base_cost
+
+    incremental_surplus = max(
+        _offer_surplus_quantity(offer) - _offer_surplus_quantity(alternative),
+        0,
+    )
+    if incremental_surplus <= 0:
+        return base_cost
+
+    penalty = incremental_surplus * _offer_effective_unit_price(alternative) * penalty_factor
+    return base_cost + penalty
+
+
+def _select_by_supplier_score_in_currency_group(
+    offers: list[DistributorOffer],
+) -> DistributorOffer:
+    """Return the preferred offer after surplus-aware cross-supplier scoring."""
+    comparable = _priced_offers_in_primary_currency_group(offers)
+    penalty_factor = resolve_surplus_penalty_factor()
 
     return min(
         comparable,
         key=lambda offer: (
+            _surplus_adjusted_extended_price(
+                offer,
+                comparable,
+                penalty_factor=penalty_factor,
+            ),
             float("inf") if offer.extended_price is None else offer.extended_price,
+            _offer_surplus_quantity(offer),
+            float("inf") if offer.purchased_quantity is None else offer.purchased_quantity,
             offer.distributor.lower(),
         ),
+    )
+
+
+def _selected_offer_from_offers(
+    priced: PricedPart,
+    offers: list[DistributorOffer],
+) -> DistributorOffer | None:
+    """Return the currently selected offer record from one offer list."""
+    return next(
+        (
+            offer
+            for offer in offers
+            if offer.distributor == priced.distributor
+            and offer.distributor_part_number == priced.distributor_part_number
+        ),
+        None,
     )
 
 
@@ -730,6 +884,13 @@ def _print_lookup_status(
         print(f"{indent}note: {note}")
 
 
+def _print_runtime_notices(notices: list[str]) -> None:
+    """Print one or more run-level informational notices."""
+    indent = " " * 11
+    for notice in notices:
+        print(f"{indent}info: {notice}")
+
+
 def _lookup_timing_suffix(
     part_duration: float | None,
     source_timings: list[tuple[str, float]] | None,
@@ -758,6 +919,8 @@ def _lookup_source_label(priced: PricedPart) -> str:
     """Return the compact source label shown in live output."""
     if priced.distributor == "TI":
         return "TI direct"
+    if priced.distributor == "NXP":
+        return "NXP direct"
     if priced.distributor:
         return priced.distributor
     return "Lookup"
@@ -790,23 +953,11 @@ def _compared_cheapest_note(priced: PricedPart) -> str | None:
     if len(priced_offers) < 2 or not priced.distributor:
         return None
 
-    selected_offer = next(
-        (
-            offer
-            for offer in priced_offers
-            if offer.distributor == priced.distributor
-            and offer.distributor_part_number == priced.distributor_part_number
-        ),
-        None,
-    )
+    selected_offer = _selected_offer_from_offers(priced, priced_offers)
     if selected_offer is None:
         return None
 
-    comparable = [
-        offer
-        for offer in priced_offers
-        if (offer.currency or "") == (selected_offer.currency or "")
-    ] or priced_offers
+    comparable = _priced_offers_in_primary_currency_group(priced_offers)
     cheapest = min(
         comparable,
         key=lambda offer: float("inf") if offer.extended_price is None else offer.extended_price,
@@ -819,6 +970,48 @@ def _compared_cheapest_note(priced: PricedPart) -> str | None:
     return None
 
 
+def _surplus_adjusted_choice_note(priced: PricedPart) -> str | None:
+    """Return a note when the selected supplier beat a cheaper offer via lower surplus."""
+    if not priced.distributor:
+        return None
+
+    priced_offers = [
+        offer for offer in priced.offers if offer.is_priced and not offer.review_required
+    ]
+    if len(priced_offers) < 2:
+        return None
+
+    selected_offer = _selected_offer_from_offers(priced, priced_offers)
+    if selected_offer is None:
+        return None
+
+    comparable = _priced_offers_in_primary_currency_group(priced_offers)
+    cheapest = min(
+        comparable,
+        key=lambda offer: float("inf") if offer.extended_price is None else offer.extended_price,
+    )
+    if (
+        cheapest.distributor == selected_offer.distributor
+        and cheapest.distributor_part_number == selected_offer.distributor_part_number
+    ):
+        return None
+
+    selected_surplus = _offer_surplus_quantity(selected_offer)
+    cheapest_surplus = _offer_surplus_quantity(cheapest)
+    if selected_surplus >= cheapest_surplus:
+        return None
+
+    surplus_reduction = cheapest_surplus - selected_surplus
+    cash_delta = (selected_offer.extended_price or 0.0) - (cheapest.extended_price or 0.0)
+    currency = selected_offer.currency or cheapest.currency or ""
+    cash_prefix = "+" if cash_delta >= 0 else "-"
+    return (
+        f"surplus-adjusted over {cheapest.distributor}; "
+        f"{cash_prefix}{abs(cash_delta):.2f} {currency}".rstrip()
+        + f", -{surplus_reduction:,} spare"
+    )
+
+
 def _lookup_note(priced: PricedPart) -> str | None:
     """Return the secondary live-output note line for one part."""
     notes: list[str] = []
@@ -829,6 +1022,10 @@ def _lookup_note(priced: PricedPart) -> str | None:
     cheapest_note = _compared_cheapest_note(priced)
     if cheapest_note:
         notes.append(cheapest_note)
+    else:
+        surplus_adjusted_note = _surplus_adjusted_choice_note(priced)
+        if surplus_adjusted_note:
+            notes.append(surplus_adjusted_note)
 
     purchase_note = _purchase_selection_note(priced)
     if purchase_note:
