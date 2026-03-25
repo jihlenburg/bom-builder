@@ -1,0 +1,39 @@
+{
+  "SearchResults": {
+    "Parts": [
+      {
+        "AlternatePackagings": null,
+        "AvailabilityInStock": null,
+        "AvailabilityOnOrder": [],
+        "Category": null,
+        "DataSheetUrl": "",
+        "Description": " MOSFET_(120V 300V)",
+        "FactoryStock": null,
+        "ImagePath": null,
+        "InfoMessages": [],
+        "LeadTime": "0 Days",
+        "LifecycleStatus": null,
+        "Manufacturer": "Infineon Technologies",
+        "ManufacturerPartNumber": "IAUTN12S5N018T",
+        "Min": "0",
+        "MouserPartNumber": "N/A",
+        "Mult": "0",
+        "MultiSimBlue": 0,
+        "PriceBreaks": [],
+        "ProductAttributes": [],
+        "ProductCompliance": [
+          {
+            "ComplianceName": "ECCN",
+            "ComplianceValue": "EAR99"
+          }
+        ],
+        "ProductDetailUrl": "https://www.mouser.de/ProductDetail/Infineon-Technologies/IAUTN12S5N018T?qs=bpu3f%2FCR1jz2TIs9LPPKBQ%3D%3D",
+        "ROHSStatus": "",
+        "Reeling": false,
+        "RestrictionMessage": "Mouser does not presently sell this product in your region.",
+        "SuggestedReplacement": "",
+        "SurchargeMessages": null
+      }
+    ]
+  }
+}

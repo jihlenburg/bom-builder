@@ -1,0 +1,151 @@
+{
+  "SearchResults": {
+    "Parts": [
+      {
+        "AlternatePackagings": null,
+        "Availability": "59096 In Stock",
+        "AvailabilityInStock": "59096",
+        "AvailabilityOnOrder": [],
+        "Category": "ESD Protection Diodes / TVS Diodes",
+        "DataSheetUrl": "",
+        "Description": "ESD Protection Diodes / TVS Diodes 30A 2.5pF AEC-Q101",
+        "FactoryStock": "0",
+        "ImagePath": "https://www.mouser.com/images/littelfuse/images/AQ_SOD323_2_DSL.jpg",
+        "InfoMessages": [],
+        "LeadTime": "91 Days",
+        "LifecycleStatus": null,
+        "Manufacturer": "Littelfuse",
+        "ManufacturerPartNumber": "AQ4020-01FTG",
+        "Min": "1",
+        "MouserPartNumber": "576-AQ4020-01FTG",
+        "Mult": "1",
+        "MultiSimBlue": 0,
+        "PriceBreaks": [
+          {
+            "Currency": "EUR",
+            "Price": "0,499 \u20ac",
+            "Quantity": 1
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,429 \u20ac",
+            "Quantity": 10
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,307 \u20ac",
+            "Quantity": 100
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,259 \u20ac",
+            "Quantity": 500
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,239 \u20ac",
+            "Quantity": 1000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,226 \u20ac",
+            "Quantity": 3000
+          }
+        ],
+        "ProductAttributes": [
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Reel"
+          },
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Cut Tape"
+          },
+          {
+            "AttributeCost": "A MouseReel\u2122 fee of 5,00 \u20ac will be added and calculated in your basket. All MouseReel\u2122 orders are non-cancellable and non-returnable.",
+            "AttributeName": "Packaging",
+            "AttributeValue": "MouseReel"
+          },
+          {
+            "AttributeName": "Standard Pack Qty",
+            "AttributeValue": "3000"
+          }
+        ],
+        "ProductCompliance": [
+          {
+            "ComplianceName": "TARIC",
+            "ComplianceValue": "8541100000"
+          },
+          {
+            "ComplianceName": "CNHTS",
+            "ComplianceValue": "8541100000"
+          },
+          {
+            "ComplianceName": "CAHTS",
+            "ComplianceValue": "8541100090"
+          },
+          {
+            "ComplianceName": "USHTS",
+            "ComplianceValue": "8541100080"
+          },
+          {
+            "ComplianceName": "JPHTS",
+            "ComplianceValue": "854110090"
+          },
+          {
+            "ComplianceName": "KRHTS",
+            "ComplianceValue": "8541109000"
+          },
+          {
+            "ComplianceName": "MXHTS",
+            "ComplianceValue": "8541100199"
+          },
+          {
+            "ComplianceName": "BRHTS",
+            "ComplianceValue": "85411029"
+          },
+          {
+            "ComplianceName": "ECCN",
+            "ComplianceValue": "EAR99"
+          }
+        ],
+        "ProductDetailUrl": "https://www.mouser.de/ProductDetail/Littelfuse/AQ4020-01FTG?qs=YCa%2FAAYMW015W3B84qpvIw%3D%3D",
+        "ROHSStatus": "RoHS Compliant",
+        "Reeling": true,
+        "SuggestedReplacement": "",
+        "SurchargeMessages": null,
+        "UnitWeightKg": {
+          "UnitWeight": 4.1e-06
+        }
+      },
+      {
+        "AlternatePackagings": null,
+        "AvailabilityInStock": null,
+        "AvailabilityOnOrder": [],
+        "Category": null,
+        "DataSheetUrl": "",
+        "Description": "",
+        "FactoryStock": null,
+        "ImagePath": null,
+        "InfoMessages": [],
+        "LeadTime": "0 Days",
+        "LifecycleStatus": null,
+        "Manufacturer": "ROHM Semiconductor",
+        "ManufacturerPartNumber": "AQ4020-01FTG",
+        "Min": "0",
+        "MouserPartNumber": "N/A",
+        "Mult": "0",
+        "MultiSimBlue": 0,
+        "PriceBreaks": [],
+        "ProductAttributes": [],
+        "ProductCompliance": [],
+        "ProductDetailUrl": "https://www.mouser.de/ProductDetail/ROHM-Semiconductor/AQ4020-01FTG?qs=W0yvOO0ixfEZsxsIdwmcmQ%3D%3D",
+        "ROHSStatus": "",
+        "Reeling": false,
+        "RestrictionMessage": "Mouser does not presently sell this product in your region.",
+        "SuggestedReplacement": "",
+        "SurchargeMessages": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-03-23T10:27:20+00:00",
+  "first_part_manufacturer": "Littelfuse",
+  "first_part_manufacturer_part_number": "AQ4020-01FTG",
+  "product_detail_url": "https://www.mouser.de/ProductDetail/Littelfuse/AQ4020-01FTG?qs=YCa%2FAAYMW015W3B84qpvIw%3D%3D",
+  "product_page_blocked": true,
+  "product_page_packaging_details": {
+    "full_reel_price_breaks": [],
+    "full_reel_quantity": null,
+    "minimum_order_quantity": null,
+    "order_multiple": null,
+    "packaging_mode": null,
+    "packaging_source": null,
+    "standard_pack_quantity": null
+  },
+  "product_page_status": 200,
+  "query": "AQ4020-01FTG",
+  "result_count": 2,
+  "search_option": "Exact",
+  "search_packaging_details": {
+    "full_reel_price_breaks": [],
+    "full_reel_quantity": null,
+    "minimum_order_quantity": 1,
+    "order_multiple": null,
+    "packaging_mode": null,
+    "packaging_source": "search_api",
+    "standard_pack_quantity": null
+  },
+  "search_source": "live_api"
+}

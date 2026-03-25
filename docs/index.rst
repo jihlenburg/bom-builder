@@ -11,4 +11,5 @@ documentation built directly from the Python docstrings in the source tree.
    README.md
    guides/secrets.md
    guides/interactive-resolution.md
+   guides/digikey-account-setup.md
    api/index

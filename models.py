@@ -102,13 +102,82 @@ class AggregatedPart(BaseModel):
     pins: int | None = None
 
 
+class PurchaseLeg(BaseModel):
+    """One concrete leg inside a possibly mixed purchase plan."""
+
+    purchased_quantity: int = Field(ge=1)
+    unit_price: float = Field(ge=0)
+    extended_price: float = Field(ge=0)
+    currency: str
+    price_break_quantity: int | None = Field(default=None, ge=0)
+    pricing_strategy: str | None = None
+    package_type: str | None = None
+    packaging_mode: str | None = None
+    order_batch_quantity: int | None = Field(default=None, ge=0)
+    order_batch_count: int | None = Field(default=None, ge=0)
+
+
+class DistributorOffer(BaseModel):
+    """One distributor-specific offer for an aggregated BOM line.
+
+    The BOM pipeline can query multiple distributors for the same logical part.
+    Each result is normalized into this model so the runtime can compare offers
+    without caring whether the data came from Mouser, Digi-Key, or a future
+    distributor adapter.
+    """
+
+    distributor: str = Field(description="Distributor display name")
+    distributor_part_number: str | None = Field(
+        default=None,
+        description="Distributor orderable/product number",
+    )
+    manufacturer_part_number: str | None = Field(
+        default=None,
+        description="Resolved manufacturer part number for this offer",
+    )
+    unit_price: float | None = Field(default=None, ge=0)
+    extended_price: float | None = Field(default=None, ge=0)
+    currency: str | None = None
+    availability: str | None = None
+    price_break_quantity: int | None = None
+    required_quantity: int | None = Field(default=None, ge=0)
+    purchased_quantity: int | None = Field(default=None, ge=0)
+    surplus_quantity: int | None = Field(default=None, ge=0)
+    package_type: str | None = None
+    packaging_mode: str | None = None
+    packaging_source: str | None = None
+    minimum_order_quantity: int | None = Field(default=None, ge=0)
+    order_multiple: int | None = Field(default=None, ge=0)
+    full_reel_quantity: int | None = Field(default=None, ge=0)
+    pricing_strategy: str | None = None
+    order_plan: str | None = None
+    match_method: MatchMethod | None = None
+    match_candidates: int | None = None
+    resolution_source: str | None = None
+    review_required: bool = False
+    lookup_error: str | None = None
+    purchase_legs: list[PurchaseLeg] = Field(default_factory=list)
+
+    @property
+    def is_priced(self) -> bool:
+        """Return True when the offer has a resolved extended price."""
+        return self.extended_price is not None
+
+    @property
+    def has_surplus_purchase(self) -> bool:
+        """Return whether the offer buys more units than the BOM strictly needs."""
+        required = self.required_quantity or 0
+        purchased = self.purchased_quantity or 0
+        return required > 0 and purchased > required
+
+
 class PricedPart(BaseModel):
     """An aggregated part enriched with distributor lookup results.
 
-    Instances of this model are produced by the Mouser resolver. They may be
-    fully priced, partially resolved with warnings, or completely unresolved.
-    Output writers and the console summary operate on this model directly so
-    they can show both successful pricing data and resolver diagnostics.
+    ``PricedPart`` stores the aggregated BOM line plus the currently selected
+    offer that should be used in reports and cost summaries. Alternate offers
+    from other distributors are retained in :attr:`offers` so JSON/debug output
+    can still expose why a cheaper or safer source was or was not selected.
     """
 
     part_number: str
@@ -119,17 +188,33 @@ class PricedPart(BaseModel):
     reference: str | None = None
     package: str | None = None
     pins: int | None = None
+    distributor: str | None = None
+    distributor_part_number: str | None = None
+    manufacturer_part_number: str | None = None
     mouser_part_number: str | None = None
     unit_price: float | None = Field(default=None, ge=0)
     extended_price: float | None = Field(default=None, ge=0)
     currency: str | None = None
     availability: str | None = None
     price_break_quantity: int | None = None
+    required_quantity: int | None = Field(default=None, ge=0)
+    purchased_quantity: int | None = Field(default=None, ge=0)
+    surplus_quantity: int | None = Field(default=None, ge=0)
+    package_type: str | None = None
+    packaging_mode: str | None = None
+    packaging_source: str | None = None
+    minimum_order_quantity: int | None = Field(default=None, ge=0)
+    order_multiple: int | None = Field(default=None, ge=0)
+    full_reel_quantity: int | None = Field(default=None, ge=0)
+    pricing_strategy: str | None = None
+    order_plan: str | None = None
     match_method: MatchMethod | None = None
     match_candidates: int | None = None
     resolution_source: str | None = None
     review_required: bool = False
     lookup_error: str | None = None
+    offers: list[DistributorOffer] = Field(default_factory=list)
+    purchase_legs: list[PurchaseLeg] = Field(default_factory=list)
 
     @classmethod
     def from_aggregated(cls, agg: AggregatedPart) -> "PricedPart":
@@ -147,7 +232,9 @@ class PricedPart(BaseModel):
             A new instance containing the aggregation fields and no pricing
             metadata yet.
         """
-        return cls(**agg.model_dump())
+        priced = cls(**agg.model_dump())
+        priced.required_quantity = agg.total_quantity
+        return priced
 
     @property
     def is_priced(self) -> bool:
@@ -158,6 +245,51 @@ class PricedPart(BaseModel):
     def has_lookup_error(self) -> bool:
         """Return True when lookup or pricing produced an error/warning."""
         return bool(self.lookup_error)
+
+    @property
+    def has_surplus_purchase(self) -> bool:
+        """Return whether the selected offer intentionally overbuys parts."""
+        required = self.required_quantity or 0
+        purchased = self.purchased_quantity or 0
+        return required > 0 and purchased > required
+
+    def apply_selected_offer(self, offer: DistributorOffer) -> None:
+        """Copy one normalized distributor offer into the selected top level.
+
+        Parameters
+        ----------
+        offer:
+            The offer that should drive summary totals, report columns, and the
+            selected distributor metadata shown to the user.
+        """
+        self.distributor = offer.distributor
+        self.distributor_part_number = offer.distributor_part_number
+        self.manufacturer_part_number = offer.manufacturer_part_number
+        self.unit_price = offer.unit_price
+        self.extended_price = offer.extended_price
+        self.currency = offer.currency
+        self.availability = offer.availability
+        self.price_break_quantity = offer.price_break_quantity
+        self.required_quantity = offer.required_quantity or self.required_quantity or self.total_quantity
+        self.purchased_quantity = offer.purchased_quantity
+        self.surplus_quantity = offer.surplus_quantity
+        self.package_type = offer.package_type
+        self.packaging_mode = offer.packaging_mode
+        self.packaging_source = offer.packaging_source
+        self.minimum_order_quantity = offer.minimum_order_quantity
+        self.order_multiple = offer.order_multiple
+        self.full_reel_quantity = offer.full_reel_quantity
+        self.pricing_strategy = offer.pricing_strategy
+        self.order_plan = offer.order_plan
+        self.match_method = offer.match_method
+        self.match_candidates = offer.match_candidates
+        self.resolution_source = offer.resolution_source
+        self.review_required = offer.review_required
+        self.lookup_error = offer.lookup_error
+        self.purchase_legs = [leg.model_copy(deep=True) for leg in offer.purchase_legs]
+        self.mouser_part_number = (
+            offer.distributor_part_number if offer.distributor.lower() == "mouser" else None
+        )
 
 
 class BomSummary(BaseModel):

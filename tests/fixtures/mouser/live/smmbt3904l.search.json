@@ -1,0 +1,268 @@
+{
+  "SearchResults": {
+    "Parts": [
+      {
+        "AlternatePackagings": [
+          {
+            "APMfrPN": "SMMBT3904LT3G"
+          }
+        ],
+        "AvailabilityInStock": "0",
+        "AvailabilityOnOrder": [
+          {
+            "Date": "2026-08-11T00:00:00",
+            "Quantity": 52005
+          },
+          {
+            "Date": "2026-09-25T00:00:00",
+            "Quantity": 132000
+          }
+        ],
+        "Category": "Bipolar Transistors - BJT",
+        "DataSheetUrl": "",
+        "Description": "Bipolar Transistors - BJT SS GP XSTR SPCL TR",
+        "FactoryStock": "0",
+        "ImagePath": "https://www.mouser.com/images/mouserelectronics/images/SOT_23_3_t.jpg",
+        "InfoMessages": [],
+        "LeadTime": "287 Days",
+        "LifecycleStatus": null,
+        "Manufacturer": "onsemi",
+        "ManufacturerPartNumber": "SMMBT3904LT1G",
+        "Min": "1",
+        "MouserPartNumber": "863-SMMBT3904LT1G",
+        "Mult": "1",
+        "MultiSimBlue": 0,
+        "PriceBreaks": [
+          {
+            "Currency": "EUR",
+            "Price": "0,232 \u20ac",
+            "Quantity": 1
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,10 \u20ac",
+            "Quantity": 10
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,052 \u20ac",
+            "Quantity": 100
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,035 \u20ac",
+            "Quantity": 500
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,03 \u20ac",
+            "Quantity": 1000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,027 \u20ac",
+            "Quantity": 3000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,022 \u20ac",
+            "Quantity": 6000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,019 \u20ac",
+            "Quantity": 9000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,017 \u20ac",
+            "Quantity": 24000
+          }
+        ],
+        "ProductAttributes": [
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Reel"
+          },
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Cut Tape"
+          },
+          {
+            "AttributeCost": "A MouseReel\u2122 fee of 5,00 \u20ac will be added and calculated in your basket. All MouseReel\u2122 orders are non-cancellable and non-returnable.",
+            "AttributeName": "Packaging",
+            "AttributeValue": "MouseReel"
+          },
+          {
+            "AttributeName": "Standard Pack Qty",
+            "AttributeValue": "3000"
+          }
+        ],
+        "ProductCompliance": [
+          {
+            "ComplianceName": "TARIC",
+            "ComplianceValue": "8541210000"
+          },
+          {
+            "ComplianceName": "CNHTS",
+            "ComplianceValue": "8541210000"
+          },
+          {
+            "ComplianceName": "CAHTS",
+            "ComplianceValue": "8541210000"
+          },
+          {
+            "ComplianceName": "USHTS",
+            "ComplianceValue": "8541210075"
+          },
+          {
+            "ComplianceName": "JPHTS",
+            "ComplianceValue": "8541210101"
+          },
+          {
+            "ComplianceName": "KRHTS",
+            "ComplianceValue": "8541219000"
+          },
+          {
+            "ComplianceName": "MXHTS",
+            "ComplianceValue": "85412101"
+          },
+          {
+            "ComplianceName": "ECCN",
+            "ComplianceValue": "EAR99"
+          }
+        ],
+        "ProductDetailUrl": "https://www.mouser.de/ProductDetail/onsemi/SMMBT3904LT1G?qs=SHm1gYoUFFxP0E8RxmhUgw%3D%3D",
+        "ROHSStatus": "RoHS Compliant",
+        "Reeling": true,
+        "SuggestedReplacement": "",
+        "SurchargeMessages": null,
+        "UnitWeightKg": {
+          "UnitWeight": 3.9e-05
+        }
+      },
+      {
+        "AlternatePackagings": [
+          {
+            "APMfrPN": "SMMBT3904LT1G"
+          }
+        ],
+        "Availability": "27948 In Stock",
+        "AvailabilityInStock": "27948",
+        "AvailabilityOnOrder": [],
+        "Category": "Bipolar Transistors - BJT",
+        "DataSheetUrl": "",
+        "Description": "Bipolar Transistors - BJT SS SOT23 GP XSTR SPCL TR",
+        "FactoryStock": "0",
+        "ImagePath": "https://www.mouser.com/images/mouserelectronics/images/SOT_23_3_t.jpg",
+        "InfoMessages": [],
+        "LeadTime": "287 Days",
+        "LifecycleStatus": null,
+        "Manufacturer": "onsemi",
+        "ManufacturerPartNumber": "SMMBT3904LT3G",
+        "Min": "1",
+        "MouserPartNumber": "863-SMMBT3904LT3G",
+        "Mult": "1",
+        "MultiSimBlue": 0,
+        "PriceBreaks": [
+          {
+            "Currency": "EUR",
+            "Price": "0,112 \u20ac",
+            "Quantity": 1
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,069 \u20ac",
+            "Quantity": 10
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,042 \u20ac",
+            "Quantity": 100
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,031 \u20ac",
+            "Quantity": 500
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,024 \u20ac",
+            "Quantity": 1000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,021 \u20ac",
+            "Quantity": 5000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,017 \u20ac",
+            "Quantity": 10000
+          }
+        ],
+        "ProductAttributes": [
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Reel"
+          },
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Cut Tape"
+          },
+          {
+            "AttributeCost": "A MouseReel\u2122 fee of 5,00 \u20ac will be added and calculated in your basket. All MouseReel\u2122 orders are non-cancellable and non-returnable.",
+            "AttributeName": "Packaging",
+            "AttributeValue": "MouseReel"
+          },
+          {
+            "AttributeName": "Standard Pack Qty",
+            "AttributeValue": "10000"
+          }
+        ],
+        "ProductCompliance": [
+          {
+            "ComplianceName": "TARIC",
+            "ComplianceValue": "8541210000"
+          },
+          {
+            "ComplianceName": "CNHTS",
+            "ComplianceValue": "8541210000"
+          },
+          {
+            "ComplianceName": "CAHTS",
+            "ComplianceValue": "8541210000"
+          },
+          {
+            "ComplianceName": "USHTS",
+            "ComplianceValue": "8541210075"
+          },
+          {
+            "ComplianceName": "JPHTS",
+            "ComplianceValue": "854121000"
+          },
+          {
+            "ComplianceName": "KRHTS",
+            "ComplianceValue": "8541219000"
+          },
+          {
+            "ComplianceName": "MXHTS",
+            "ComplianceValue": "8541210100"
+          },
+          {
+            "ComplianceName": "ECCN",
+            "ComplianceValue": "EAR99"
+          }
+        ],
+        "ProductDetailUrl": "https://www.mouser.de/ProductDetail/onsemi/SMMBT3904LT3G?qs=SHm1gYoUFFwFhooEcf4Nsg%3D%3D",
+        "ROHSStatus": "RoHS Compliant",
+        "Reeling": true,
+        "SuggestedReplacement": "",
+        "SurchargeMessages": null,
+        "UnitWeightKg": {
+          "UnitWeight": 3.9e-05
+        }
+      }
+    ]
+  }
+}

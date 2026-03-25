@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-03-23T10:27:21+00:00",
+  "first_part_manufacturer": "Infineon Technologies",
+  "first_part_manufacturer_part_number": "IAUTN12S5N018T",
+  "product_detail_url": "https://www.mouser.de/ProductDetail/Infineon-Technologies/IAUTN12S5N018T?qs=bpu3f%2FCR1jz2TIs9LPPKBQ%3D%3D",
+  "product_page_blocked": true,
+  "product_page_packaging_details": {
+    "full_reel_price_breaks": [],
+    "full_reel_quantity": null,
+    "minimum_order_quantity": null,
+    "order_multiple": null,
+    "packaging_mode": null,
+    "packaging_source": null,
+    "standard_pack_quantity": null
+  },
+  "product_page_status": 200,
+  "query": "IAUTN12S5N018T",
+  "result_count": 1,
+  "search_option": "Exact",
+  "search_packaging_details": {
+    "full_reel_price_breaks": [],
+    "full_reel_quantity": null,
+    "minimum_order_quantity": 0,
+    "order_multiple": null,
+    "packaging_mode": null,
+    "packaging_source": null,
+    "standard_pack_quantity": null
+  },
+  "search_source": "live_api"
+}

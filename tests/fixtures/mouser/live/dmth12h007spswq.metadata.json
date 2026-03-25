@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-03-23T10:27:21+00:00",
+  "first_part_manufacturer": "Diodes Incorporated",
+  "first_part_manufacturer_part_number": "DMTH12H007SPSWQ-13",
+  "product_detail_url": "https://www.mouser.de/ProductDetail/Diodes-Incorporated/DMTH12H007SPSWQ-13?qs=vvQtp7zwQdNFx6lkd5xaIw%3D%3D",
+  "product_page_blocked": true,
+  "product_page_packaging_details": {
+    "full_reel_price_breaks": [],
+    "full_reel_quantity": null,
+    "minimum_order_quantity": null,
+    "order_multiple": null,
+    "packaging_mode": null,
+    "packaging_source": null,
+    "standard_pack_quantity": null
+  },
+  "product_page_status": 200,
+  "query": "DMTH12H007SPSWQ",
+  "result_count": 1,
+  "search_option": "BeginsWith",
+  "search_packaging_details": {
+    "full_reel_price_breaks": [],
+    "full_reel_quantity": null,
+    "minimum_order_quantity": 1,
+    "order_multiple": null,
+    "packaging_mode": null,
+    "packaging_source": "search_api",
+    "standard_pack_quantity": null
+  },
+  "search_source": "live_api"
+}

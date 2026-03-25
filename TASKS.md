@@ -25,5 +25,15 @@ Active tasks should be recorded here while work is in progress and checked off o
 - [x] Add direct single-part CLI lookup mode and separate API lookup failures from true no-match cases
 - [x] Add Mouser multi-key fallback and reduce wasted requests on saved resolutions and exhausted daily quotas
 - [x] Refresh `.gitignore` for local env files, caches, generated docs, and BOM outputs
-- [ ] Add a generated Sphinx API documentation toolchain under `docs/`
+- [x] Add Digi-Key OAuth client credentials to the local `.env` workflow and secret registry
+- [x] Add a one-time Digi-Key OAuth helper to retrieve associated account IDs and document the setup flow
+- [x] Add a locale-aware Digi-Key V4 client and live EUR probe path for EU pricing verification
+- [x] Integrate Digi-Key into the BOM pricing pipeline and auto-select the cheapest confident distributor offer
+- [x] Fix `.env` precedence so one-shot shell overrides work for true cold-cache runs
+- [x] Add a generated Sphinx API documentation toolchain under `docs/`
+- [x] Add overbuy-aware distributor pricing and shift final summaries to per-unit cost views
+- [x] Add manufacturer-page fallback parsing, cached live fixture capture, and shared purchase-plan optimization
+- [x] Add TI direct pricing plus FX normalization into the final supplier comparison
+- [x] Redesign the buyer-facing Excel/CSV order sheet and live console output
+- [x] Clean the repository, refresh docs, and remove stray local build/runtime artifacts
 - [ ] Tighten deterministic Mouser resolution and ambiguity handling

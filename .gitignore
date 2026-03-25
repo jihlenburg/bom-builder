@@ -19,6 +19,7 @@ test_output.*
 *_output.json
 *_output.csv
 *_output.xlsx
+~$*.xlsx
 
 # Local cache and resolver state
 *.sqlite3

@@ -16,12 +16,17 @@ pricing decisions are tightly coupled and easier to reason about together.
 """
 
 import logging
+import json
+import os
 import re
 import sys
 import time
 from dataclasses import dataclass, replace
+from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 import yaml
@@ -34,7 +39,19 @@ from config import (
     MOUSER_SEARCH_API_LIMITS,
 )
 from lookup_cache import LookupCache
-from models import AggregatedPart, MatchMethod, PricedPart
+from manufacturer_packaging import (
+    ManufacturerPackagingDetails,
+    is_probably_blocked_page_html,
+    manufacturer_packaging_details_from_html,
+    manufacturer_page_url,
+)
+from models import AggregatedPart, DistributorOffer, MatchMethod, PricedPart
+from optimizer import (
+    FamilyPriceBreak,
+    OptimizedPurchasePlan as PurchasePlan,
+    PurchaseFamily,
+    optimize_purchase_families,
+)
 from package import extract_package_info
 from secret_store import get_secret, get_secret_values
 
@@ -99,6 +116,85 @@ class LookupResult:
     review_required: bool = False
     candidates: tuple[ScoredCandidate, ...] = ()
     resolution_source: str | None = None
+
+
+@dataclass(frozen=True)
+class MouserPackagingDetails:
+    """Packaging and ordering constraints resolved for one Mouser orderable."""
+
+    packaging_mode: str | None = None
+    packaging_source: str | None = None
+    minimum_order_quantity: int | None = None
+    order_multiple: int | None = None
+    standard_pack_quantity: int | None = None
+    full_reel_quantity: int | None = None
+    full_reel_price_breaks: tuple[dict[str, Any], ...] = ()
+
+
+class _VisibleTextParser(HTMLParser):
+    """Small HTML-to-text helper for Mouser product-page fallback parsing."""
+
+    _BLOCK_TAGS = {
+        "address",
+        "article",
+        "aside",
+        "br",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "footer",
+        "form",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "section",
+        "table",
+        "tbody",
+        "td",
+        "th",
+        "thead",
+        "tr",
+        "ul",
+    }
+
+    def __init__(self) -> None:
+        """Initialize the parser with an empty text buffer."""
+        super().__init__()
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Insert line breaks around known block tags."""
+        if tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        """Insert line breaks around known block tags."""
+        if tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        """Collect visible text nodes as-is for later normalization."""
+        self._parts.append(data)
+
+    def text(self) -> str:
+        """Return the normalized accumulated text."""
+        raw = unescape("".join(self._parts))
+        lines = [" ".join(line.split()) for line in raw.splitlines()]
+        return "\n".join(line for line in lines if line)
 
 
 def _normalize_manufacturer_name(name: str) -> str:
@@ -298,6 +394,8 @@ class MouserClient:
         max_attempts: int = MOUSER_DEFAULT_MAX_ATTEMPTS,
         cache_enabled: bool = True,
         cache_ttl_seconds: int = 24 * 60 * 60,
+        allow_product_page_fallback: bool | None = None,
+        allow_manufacturer_page_fallback: bool | None = None,
     ):
         """Initialize the Mouser API client.
 
@@ -315,6 +413,15 @@ class MouserClient:
             Whether the persistent lookup cache should be used.
         cache_ttl_seconds:
             Freshness window for cached search results.
+        allow_product_page_fallback:
+            Whether Mouser product pages may be fetched as an explicit
+            non-API fallback for packaging/reel metadata. Defaults to disabled
+            unless ``BOM_BUILDER_ENABLE_MOUSER_PAGE_FALLBACK=1`` is set.
+        allow_manufacturer_page_fallback:
+            Whether known manufacturer pages may be fetched as a second-order
+            fallback for packaging/reel metadata. Defaults to the same opt-in
+            state as product-page fallback unless explicitly overridden or
+            ``BOM_BUILDER_ENABLE_MANUFACTURER_PAGE_FALLBACK=1`` is set.
 
         Raises
         ------
@@ -335,6 +442,23 @@ class MouserClient:
         self.max_attempts = max_attempts
         self._client = httpx.Client(timeout=30.0)
         self._cache = LookupCache(ttl_seconds=cache_ttl_seconds) if cache_enabled else None
+        self._product_page_cache: dict[str, MouserPackagingDetails | None] = {}
+        self._manufacturer_page_cache: dict[str, ManufacturerPackagingDetails | None] = {}
+        product_page_fallback = (
+            allow_product_page_fallback
+            if allow_product_page_fallback is not None
+            else os.getenv("BOM_BUILDER_ENABLE_MOUSER_PAGE_FALLBACK", "").strip() == "1"
+        )
+        self.allow_product_page_fallback = product_page_fallback
+        self.allow_manufacturer_page_fallback = (
+            allow_manufacturer_page_fallback
+            if allow_manufacturer_page_fallback is not None
+            else (
+                os.getenv("BOM_BUILDER_ENABLE_MANUFACTURER_PAGE_FALLBACK", "").strip()
+                == "1"
+                or product_page_fallback
+            )
+        )
         self.network_requests = 0
 
     def close(self) -> None:
@@ -455,6 +579,615 @@ class MouserClient:
             reason,
         )
         return True
+
+    def packaging_details(
+        self,
+        candidate: dict[str, Any],
+        *,
+        bom_part_number: str | None = None,
+    ) -> MouserPackagingDetails:
+        """Return packaging constraints from search data plus page fallback."""
+        search_details = _packaging_details_from_candidate(candidate)
+        details = search_details
+        if self.allow_product_page_fallback and _should_fetch_product_page_packaging(candidate, search_details):
+            product_url = _candidate_product_detail_url(candidate)
+            if product_url:
+                if product_url not in self._product_page_cache:
+                    page_details: MouserPackagingDetails | None = None
+                    try:
+                        self.network_requests += 1
+                        response = self._client.get(product_url, follow_redirects=True)
+                        response.raise_for_status()
+                        page_details = _packaging_details_from_product_page_html(response.text)
+                    except Exception as e:
+                        log.debug("Failed to load Mouser product page %s: %s", product_url, e)
+                        page_details = None
+                    self._product_page_cache[product_url] = page_details
+                details = _merge_packaging_details(
+                    details,
+                    self._product_page_cache[product_url],
+                )
+
+        if not self.allow_manufacturer_page_fallback:
+            return details
+        if _manufacturer_details_are_sufficient(details):
+            return details
+
+        manufacturer_url = manufacturer_page_url(
+            str(candidate.get("Manufacturer") or ""),
+            manufacturer_part_number=str(candidate.get("ManufacturerPartNumber") or "") or None,
+            bom_part_number=bom_part_number,
+        )
+        if not manufacturer_url:
+            return details
+
+        if manufacturer_url not in self._manufacturer_page_cache:
+            manufacturer_details: ManufacturerPackagingDetails | None = None
+            try:
+                self.network_requests += 1
+                response = self._client.get(manufacturer_url, follow_redirects=True)
+                response.raise_for_status()
+                manufacturer_details = manufacturer_packaging_details_from_html(
+                    str(candidate.get("Manufacturer") or ""),
+                    manufacturer_part_number=str(candidate.get("ManufacturerPartNumber") or "") or None,
+                    bom_part_number=bom_part_number,
+                    html=response.text,
+                )
+            except Exception as e:
+                log.debug("Failed to load manufacturer page %s: %s", manufacturer_url, e)
+                manufacturer_details = None
+            self._manufacturer_page_cache[manufacturer_url] = manufacturer_details
+
+        return _merge_packaging_details(
+            details,
+            _mouser_packaging_details_from_manufacturer_details(
+                self._manufacturer_page_cache[manufacturer_url]
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Packaging helpers
+# ---------------------------------------------------------------------------
+
+
+def _candidate_product_detail_url(candidate: MouserPart) -> str | None:
+    """Return the Mouser product-detail URL when the payload exposes one."""
+    for key in ("ProductDetailUrl", "ProductDetailURL", "ProductUrl", "ProductURL"):
+        value = candidate.get(key)
+        if not value:
+            continue
+        url = str(value).strip()
+        if not url:
+            continue
+        if url.startswith(("http://", "https://")):
+            return url
+        return urljoin("https://www.mouser.com", url)
+    return None
+
+
+def _normalized_candidate_fields(candidate: MouserPart) -> dict[str, Any]:
+    """Return a key-normalized view of one Mouser result payload."""
+    return {
+        re.sub(r"[^a-z0-9]", "", str(key).lower()): value
+        for key, value in candidate.items()
+    }
+
+
+def _extract_optional_int(value: Any) -> int | None:
+    """Extract the first positive integer visible inside a loose payload value."""
+    if value in (None, "", False):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    match = re.search(r"\d[\d,\.]*", str(value))
+    if not match:
+        return None
+    digits = re.sub(r"[^\d]", "", match.group())
+    if not digits:
+        return None
+    return int(digits)
+
+
+def _candidate_field_value(candidate: MouserPart, *keys: str) -> Any:
+    """Return the first matching raw value among multiple possible field names."""
+    normalized = _normalized_candidate_fields(candidate)
+    for key in keys:
+        value = normalized.get(re.sub(r"[^a-z0-9]", "", key.lower()))
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _candidate_field_text(candidate: MouserPart, *keys: str) -> str | None:
+    """Return the first matching string field among multiple possible names."""
+    value = _candidate_field_value(candidate, *keys)
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _packaging_details_from_candidate(candidate: MouserPart) -> MouserPackagingDetails:
+    """Extract Mouser packaging constraints directly from search payload fields."""
+    packaging_mode = _candidate_field_text(candidate, "Packaging", "PackageType")
+    reeling = _candidate_field_text(candidate, "ReelingAvailability", "Reeling Availability")
+    minimum_order_quantity = _extract_optional_int(
+        _candidate_field_value(candidate, "MinimumOrderQuantity", "Minimum Order Quantity", "Min")
+    )
+    order_multiple = _extract_optional_int(
+        _candidate_field_value(
+            candidate,
+            "OrderQuantityMultiples",
+            "Order Quantity Multiples",
+            "OrderMultiple",
+            "Multiples",
+        )
+    )
+    standard_pack_quantity = _extract_optional_int(
+        _candidate_field_value(
+            candidate,
+            "StandardPackQuantity",
+            "Standard Pack Quantity",
+            "FactoryPackQuantity",
+            "Factory Pack Quantity",
+        )
+    )
+
+    full_reel_quantity = _extract_optional_int(reeling)
+    packaging_text = " ".join(text for text in [packaging_mode, reeling] if text).lower()
+    if full_reel_quantity is None and "full reel" in packaging_text and standard_pack_quantity:
+        full_reel_quantity = standard_pack_quantity
+    if full_reel_quantity is None and packaging_text and "reel" in packaging_text:
+        full_reel_quantity = standard_pack_quantity
+
+    merged_mode = " | ".join(text for text in [packaging_mode, reeling] if text) or None
+    return MouserPackagingDetails(
+        packaging_mode=merged_mode,
+        packaging_source="search_api" if merged_mode or minimum_order_quantity or order_multiple or full_reel_quantity else None,
+        minimum_order_quantity=minimum_order_quantity,
+        order_multiple=order_multiple,
+        standard_pack_quantity=standard_pack_quantity,
+        full_reel_quantity=full_reel_quantity,
+    )
+
+
+def _search_details_are_sufficient(details: MouserPackagingDetails) -> bool:
+    """Return whether search-payload packaging data is specific enough already."""
+    return bool(
+        details.minimum_order_quantity
+        or details.order_multiple
+        or details.full_reel_quantity
+        or details.full_reel_price_breaks
+    )
+
+
+def _manufacturer_details_are_sufficient(details: MouserPackagingDetails) -> bool:
+    """Return whether later manufacturer fallback is unlikely to add value."""
+    return bool(
+        details.full_reel_quantity
+        or details.full_reel_price_breaks
+        or (details.minimum_order_quantity and details.order_multiple)
+    )
+
+
+def _mouser_packaging_details_from_manufacturer_details(
+    details: ManufacturerPackagingDetails | None,
+) -> MouserPackagingDetails | None:
+    """Convert manufacturer-page packaging facts into Mouser detail shape."""
+    if details is None or not details.is_useful:
+        return None
+    return MouserPackagingDetails(
+        packaging_mode=details.packaging_mode,
+        packaging_source=details.packaging_source,
+        minimum_order_quantity=details.minimum_order_quantity,
+        order_multiple=details.order_multiple,
+        standard_pack_quantity=details.standard_pack_quantity,
+        full_reel_quantity=details.full_reel_quantity,
+    )
+
+
+def _should_fetch_product_page_packaging(
+    candidate: MouserPart,
+    search_details: MouserPackagingDetails,
+) -> bool:
+    """Return whether a Mouser product page is likely to add pricing detail."""
+    if search_details.full_reel_price_breaks:
+        return False
+    if _candidate_product_detail_url(candidate) is None:
+        return False
+
+    reeling = _candidate_field_text(candidate, "ReelingAvailability", "Reeling Availability")
+    packaging_text = " ".join(
+        text for text in [search_details.packaging_mode, reeling] if text
+    ).lower()
+    if not _search_details_are_sufficient(search_details):
+        return True
+    return any(
+        token in packaging_text
+        for token in ("full reel", "reel", "mousereel", "cut tape")
+    )
+
+
+def _merge_packaging_source(
+    primary_source: str | None,
+    fallback_source: str | None,
+) -> str | None:
+    """Return a source label that preserves both API and page enrichment."""
+    if not primary_source:
+        return fallback_source
+    if not fallback_source or fallback_source == primary_source:
+        return primary_source
+    return f"{primary_source} + {fallback_source}"
+
+
+def _merge_packaging_details(
+    primary: MouserPackagingDetails,
+    fallback: MouserPackagingDetails | None,
+) -> MouserPackagingDetails:
+    """Merge fallback page details into the search-payload packaging details."""
+    if fallback is None:
+        return primary
+    return MouserPackagingDetails(
+        packaging_mode=primary.packaging_mode or fallback.packaging_mode,
+        packaging_source=_merge_packaging_source(
+            primary.packaging_source,
+            fallback.packaging_source,
+        ),
+        minimum_order_quantity=primary.minimum_order_quantity or fallback.minimum_order_quantity,
+        order_multiple=primary.order_multiple or fallback.order_multiple,
+        standard_pack_quantity=primary.standard_pack_quantity or fallback.standard_pack_quantity,
+        full_reel_quantity=primary.full_reel_quantity or fallback.full_reel_quantity,
+        full_reel_price_breaks=primary.full_reel_price_breaks or fallback.full_reel_price_breaks,
+    )
+
+
+def _extract_product_page_pricing_currency(lines: list[str]) -> str | None:
+    """Return the currency shown in the Mouser pricing section heading."""
+    pricing_line = next(
+        (line for line in lines if line.startswith("Pricing")),
+        None,
+    )
+    if pricing_line is None:
+        return None
+    match = re.search(r"Pricing\s*\(([^)]+)\)", pricing_line, re.IGNORECASE)
+    if match is None:
+        return None
+    currency = match.group(1).strip()
+    return currency or None
+
+
+def _extract_product_page_price_sections(
+    lines: list[str],
+) -> dict[str, list[tuple[str, str]]]:
+    """Return pricing subsections keyed by their visible Mouser heading."""
+    pricing_index = next(
+        (index for index, line in enumerate(lines) if line.startswith("Pricing")),
+        None,
+    )
+    if pricing_index is None:
+        return {}
+
+    sections: dict[str, list[tuple[str, str]]] = {}
+    current_heading: str | None = None
+    row_pattern = re.compile(
+        r"^\s*([\d.,]+)\s+([€$]?\s*[\d.,]+(?:\s*(?:€|EUR|\$|USD))?)\s+[€$]?\s*[\d.,]+(?:\s*(?:€|EUR|\$|USD))?\s*$",
+        re.IGNORECASE,
+    )
+    stop_prefixes = (
+        "Pricing Choice",
+        "Packaging Choice",
+        "Alternative Packaging",
+        "†",
+        "Close",
+    )
+
+    for line in lines[pricing_index + 1:]:
+        if line.startswith(stop_prefixes):
+            break
+        if not line or line.startswith("Qty."):
+            continue
+
+        match = row_pattern.match(line)
+        if match:
+            if current_heading is not None:
+                sections.setdefault(current_heading, []).append(
+                    (match.group(1), match.group(2))
+                )
+            continue
+
+        current_heading = line
+        sections.setdefault(current_heading, [])
+
+    return sections
+
+
+def _extract_json_fragments(script_text: str) -> list[Any]:
+    """Return parseable JSON objects or arrays embedded inside one script body."""
+    decoder = json.JSONDecoder()
+    payloads: list[Any] = []
+    seen: set[str] = set()
+    index = 0
+    while index < len(script_text):
+        if script_text[index] not in "{[":
+            index += 1
+            continue
+        try:
+            payload, end_index = decoder.raw_decode(script_text[index:])
+        except json.JSONDecodeError:
+            index += 1
+            continue
+        try:
+            marker = json.dumps(payload, sort_keys=True)
+        except (TypeError, ValueError):
+            marker = ""
+        if marker not in seen:
+            payloads.append(payload)
+            if marker:
+                seen.add(marker)
+        index += max(end_index, 1)
+    return payloads
+
+
+def _extract_json_script_payloads(html: str) -> list[Any]:
+    """Return structured payloads embedded in Mouser product-page scripts."""
+    payloads: list[Any] = []
+    for match in re.finditer(
+        r"<script\b([^>]*)>(.*?)</script>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        attributes = match.group(1) or ""
+        script_text = unescape(match.group(2)).strip()
+        if not script_text:
+            continue
+
+        is_json_script = bool(
+            re.search(
+                r"type=[\"']application/(?:ld\+)?json[\"']",
+                attributes,
+                re.IGNORECASE,
+            )
+        )
+        if is_json_script:
+            try:
+                payloads.append(json.loads(script_text))
+            except json.JSONDecodeError:
+                payloads.extend(_extract_json_fragments(script_text))
+            continue
+
+        if not any(
+            token in script_text
+            for token in (
+                '"packaging"',
+                '"reelingAvailability"',
+                '"minimumOrderQuantity"',
+                '"orderQuantityMultiples"',
+                '"standardPackQuantity"',
+                '"fullReelQuantity"',
+                '"packagingOptions"',
+                '"priceBreaks"',
+            )
+        ):
+            continue
+        payloads.extend(_extract_json_fragments(script_text))
+    return payloads
+
+
+def _iter_embedded_packaging_records(node: Any) -> Any:
+    """Yield nested dict nodes that look like packaging metadata carriers."""
+    if isinstance(node, dict):
+        normalized_keys = {
+            re.sub(r"[^a-z0-9]", "", str(key).lower())
+            for key in node
+        }
+        if normalized_keys & {
+            "packaging",
+            "reelingavailability",
+            "minimumorderquantity",
+            "orderquantitymultiples",
+            "standardpackquantity",
+            "fullreelquantity",
+            "packagingoptions",
+            "pricebreaks",
+        }:
+            yield node
+        for value in node.values():
+            yield from _iter_embedded_packaging_records(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _iter_embedded_packaging_records(value)
+
+
+def _embedded_record_to_candidate(record: dict[str, Any]) -> dict[str, Any]:
+    """Map one embedded JSON record into candidate-like Mouser fields."""
+    candidate: dict[str, Any] = {}
+    for key, value in record.items():
+        normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
+        if normalized == "packaging":
+            candidate["Packaging"] = value
+        elif normalized == "reelingavailability":
+            candidate["ReelingAvailability"] = value
+        elif normalized == "minimumorderquantity":
+            candidate["MinimumOrderQuantity"] = value
+        elif normalized in {"orderquantitymultiples", "ordermultiple"}:
+            candidate["OrderQuantityMultiples"] = value
+        elif normalized in {"standardpackquantity", "fullreelquantity"}:
+            candidate["StandardPackQuantity"] = value
+    return candidate
+
+
+def _embedded_full_reel_price_breaks(record: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """Extract explicit full-reel price breaks from embedded JSON records."""
+    options = record.get("packagingOptions")
+    if isinstance(options, list):
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            packaging_text = " ".join(
+                str(option.get(key) or "")
+                for key in ("label", "packaging", "reelingAvailability", "name")
+            ).lower()
+            if "full reel" not in packaging_text and "reel" not in packaging_text:
+                continue
+            price_breaks = option.get("priceBreaks")
+            if isinstance(price_breaks, list):
+                return tuple(
+                    price_break
+                    for price_break in price_breaks
+                    if isinstance(price_break, dict)
+                )
+    price_breaks = record.get("fullReelPriceBreaks")
+    if isinstance(price_breaks, list):
+        return tuple(
+            price_break
+            for price_break in price_breaks
+            if isinstance(price_break, dict)
+        )
+    return ()
+
+
+def _packaging_details_from_embedded_product_page_html(
+    html: str,
+) -> MouserPackagingDetails | None:
+    """Parse packaging facts from structured JSON embedded in a product page."""
+    payloads = _extract_json_script_payloads(html)
+    details: MouserPackagingDetails | None = None
+    for payload in payloads:
+        for record in _iter_embedded_packaging_records(payload):
+            if not isinstance(record, dict):
+                continue
+            candidate = _embedded_record_to_candidate(record)
+            if not candidate:
+                continue
+            parsed = _packaging_details_from_candidate(candidate)
+            if not parsed.packaging_source:
+                continue
+            parsed = MouserPackagingDetails(
+                packaging_mode=parsed.packaging_mode,
+                packaging_source="product_page_embedded",
+                minimum_order_quantity=parsed.minimum_order_quantity,
+                order_multiple=parsed.order_multiple,
+                standard_pack_quantity=parsed.standard_pack_quantity,
+                full_reel_quantity=(
+                    parsed.full_reel_quantity
+                    or _extract_optional_int(record.get("fullReelQuantity"))
+                ),
+                full_reel_price_breaks=_embedded_full_reel_price_breaks(record),
+            )
+            details = parsed if details is None else _merge_packaging_details(details, parsed)
+
+    attribute_candidate: dict[str, Any] = {}
+    attribute_map = {
+        "packaging": "Packaging",
+        "reeling-availability": "ReelingAvailability",
+        "minimum-order-quantity": "MinimumOrderQuantity",
+        "order-multiple": "OrderQuantityMultiples",
+        "standard-pack-quantity": "StandardPackQuantity",
+        "full-reel-quantity": "StandardPackQuantity",
+    }
+    for attr_name, candidate_key in attribute_map.items():
+        match = re.search(
+            rf'data-{attr_name}="([^"]+)"',
+            html,
+            re.IGNORECASE,
+        )
+        if match:
+            attribute_candidate[candidate_key] = unescape(match.group(1))
+    if attribute_candidate:
+        parsed = _packaging_details_from_candidate(attribute_candidate)
+        parsed = MouserPackagingDetails(
+            packaging_mode=parsed.packaging_mode,
+            packaging_source="product_page_embedded",
+            minimum_order_quantity=parsed.minimum_order_quantity,
+            order_multiple=parsed.order_multiple,
+            standard_pack_quantity=parsed.standard_pack_quantity,
+            full_reel_quantity=parsed.full_reel_quantity,
+            full_reel_price_breaks=(),
+        )
+        details = parsed if details is None else _merge_packaging_details(details, parsed)
+
+    return details if details and _search_details_are_sufficient(details) else None
+
+
+def _packaging_details_from_product_page_html(html: str) -> MouserPackagingDetails:
+    """Parse full-reel constraints and price breaks from a Mouser product page."""
+    if is_probably_blocked_page_html(html):
+        return MouserPackagingDetails()
+    embedded_details = _packaging_details_from_embedded_product_page_html(html)
+
+    parser = _VisibleTextParser()
+    parser.feed(html)
+    text = parser.text()
+    lines = text.splitlines()
+
+    minimum_order_quantity: int | None = None
+    order_multiple: int | None = None
+    packaging_mode: str | None = None
+    full_reel_quantity: int | None = None
+
+    min_match = re.search(
+        r"Minimum:\s*([\d,.]+)\s+Multiples:\s*([\d,.]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if min_match:
+        minimum_order_quantity = _extract_optional_int(min_match.group(1))
+        order_multiple = _extract_optional_int(min_match.group(2))
+
+    full_reel_match = re.search(
+        r"Full Reel\s*\(Order in multiples of\s*([\d,.]+)\)",
+        text,
+        re.IGNORECASE,
+    )
+    if full_reel_match:
+        full_reel_quantity = _extract_optional_int(full_reel_match.group(1))
+
+    packaging_lines: list[str] = []
+    for index, line in enumerate(lines):
+        if line == "Packaging:":
+            for next_line in lines[index + 1:index + 5]:
+                if next_line.startswith("Pricing"):
+                    break
+                packaging_lines.append(next_line)
+            break
+    if packaging_lines:
+        packaging_mode = " | ".join(packaging_lines)
+
+    pricing_currency = _extract_product_page_pricing_currency(lines)
+    full_reel_price_breaks = tuple(
+        {
+            "Quantity": quantity,
+            "Price": price,
+            **({"Currency": pricing_currency} if pricing_currency else {}),
+        }
+        for quantity, price in _extract_product_page_price_section(lines, "Full Reel")
+    )
+
+    visible_details = MouserPackagingDetails(
+        packaging_mode=packaging_mode or ("Full Reel" if full_reel_quantity else None),
+        packaging_source="product_page",
+        minimum_order_quantity=minimum_order_quantity,
+        order_multiple=order_multiple,
+        standard_pack_quantity=full_reel_quantity,
+        full_reel_quantity=full_reel_quantity,
+        full_reel_price_breaks=full_reel_price_breaks,
+    )
+    if embedded_details is None:
+        return visible_details
+    return _merge_packaging_details(embedded_details, visible_details)
+
+
+def _extract_product_page_price_section(
+    lines: list[str],
+    heading_prefix: str,
+) -> list[tuple[str, str]]:
+    """Extract quantity/unit-price pairs from one Mouser pricing subsection."""
+    heading_prefix = heading_prefix.lower()
+    for heading, rows in _extract_product_page_price_sections(lines).items():
+        if heading.lower().startswith(heading_prefix):
+            return rows
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -880,6 +1613,105 @@ def best_price_break(price_breaks: list[dict], quantity: int) -> dict | None:
     return max(applicable, key=lambda pb: int(pb.get("Quantity", 0)))
 
 
+def _preferred_remainder_packaging_mode(details: MouserPackagingDetails) -> str | None:
+    """Return the most useful non-reel packaging label for mixed plans."""
+    packaging_mode = details.packaging_mode or ""
+    packaging_text = packaging_mode.lower()
+    if "cut tape" in packaging_text:
+        return "Cut Tape"
+    if "mousereel" in packaging_text:
+        return "MouseReel"
+    return details.packaging_mode
+
+
+def _family_price_breaks(
+    price_breaks: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> tuple[FamilyPriceBreak, ...]:
+    """Normalize Mouser price breaks into distributor-agnostic optimizer input."""
+    normalized: list[FamilyPriceBreak] = []
+    for price_break in price_breaks:
+        quantity = int(price_break.get("Quantity", 0) or 0)
+        if quantity <= 0:
+            continue
+        unit_price = parse_price(str(price_break.get("Price", "")))
+        if unit_price is None:
+            continue
+        normalized.append(
+            FamilyPriceBreak(
+                quantity=quantity,
+                unit_price=unit_price,
+                currency=str(price_break.get("Currency", "EUR") or "EUR"),
+            )
+        )
+    return tuple(normalized)
+
+
+def _mouser_purchase_families(
+    price_breaks: list[dict],
+    details: MouserPackagingDetails,
+) -> tuple[PurchaseFamily, ...]:
+    """Return optimizer purchase families derived from Mouser packaging data."""
+    families: list[PurchaseFamily] = []
+    standard_packaging_mode = _preferred_remainder_packaging_mode(details)
+    reel_only_search_pricing = bool(
+        details.packaging_mode
+        and "reel" in details.packaging_mode.lower()
+        and "cut tape" not in details.packaging_mode.lower()
+        and "mousereel" not in details.packaging_mode.lower()
+    )
+
+    standard_breaks = _family_price_breaks(price_breaks)
+    if standard_breaks:
+        families.append(
+            PurchaseFamily(
+                family_id="mouser_standard",
+                packaging_mode="Full Reel" if reel_only_search_pricing else standard_packaging_mode,
+                minimum_order_quantity=details.minimum_order_quantity,
+                order_multiple=details.full_reel_quantity if reel_only_search_pricing else details.order_multiple,
+                full_reel_quantity=details.full_reel_quantity if reel_only_search_pricing else None,
+                base_pricing_strategy="full reel" if reel_only_search_pricing else "requested quantity",
+                strategy_mode="full_reel" if reel_only_search_pricing else "price_break",
+                allow_mixing_as_bulk=False,
+                allow_mixing_as_remainder=not reel_only_search_pricing,
+                price_breaks=standard_breaks,
+            )
+        )
+
+    full_reel_breaks = _family_price_breaks(details.full_reel_price_breaks)
+    if full_reel_breaks:
+        families.append(
+            PurchaseFamily(
+                family_id="mouser_full_reel",
+                packaging_mode="Full Reel",
+                minimum_order_quantity=details.full_reel_quantity or details.minimum_order_quantity,
+                order_multiple=details.full_reel_quantity or details.order_multiple,
+                full_reel_quantity=details.full_reel_quantity,
+                base_pricing_strategy="full reel",
+                strategy_mode="full_reel",
+                allow_mixing_as_bulk=bool(details.full_reel_quantity),
+                allow_mixing_as_remainder=False,
+                mix_quantity=details.full_reel_quantity,
+                price_breaks=full_reel_breaks,
+            )
+        )
+
+    return tuple(families)
+
+
+def best_purchase_plan(
+    price_breaks: list[dict],
+    quantity: int,
+    *,
+    packaging_details: MouserPackagingDetails | None = None,
+) -> PurchasePlan | None:
+    """Return the cheapest buy plan across Mouser cut-tape and reel options."""
+    details = packaging_details or MouserPackagingDetails()
+    families = _mouser_purchase_families(price_breaks, details)
+    if not families:
+        return None
+    return optimize_purchase_families(quantity, families)
+
+
 def _append_lookup_error(priced: PricedPart, message: str) -> None:
     """Append a lookup or pricing note without discarding earlier context."""
     if priced.lookup_error:
@@ -903,23 +1735,110 @@ def _apply_package_info(
 
 
 def _apply_price_break(
-    priced: PricedPart, price_breaks: list[dict], quantity: int
+    priced: PricedPart,
+    price_breaks: list[dict],
+    quantity: int,
+    *,
+    packaging_details: MouserPackagingDetails | None = None,
 ) -> None:
     """Apply the best matching price break to a priced part record."""
-    best = best_price_break(price_breaks, quantity)
-    if not best:
-        _append_lookup_error(priced, "No price breaks available")
+    details = packaging_details or MouserPackagingDetails()
+    invalid_price = next(
+        (
+            price_break.get("Price")
+            for price_break in price_breaks
+            if parse_price(str(price_break.get("Price", ""))) is None
+        ),
+        None,
+    )
+    if invalid_price is None and details.full_reel_price_breaks:
+        invalid_price = next(
+            (
+                price_break.get("Price")
+                for price_break in details.full_reel_price_breaks
+                if parse_price(str(price_break.get("Price", ""))) is None
+            ),
+            None,
+        )
+    plan = best_purchase_plan(price_breaks, quantity, packaging_details=details)
+    if not plan:
+        if invalid_price is not None:
+            _append_lookup_error(priced, f"Failed to parse price: {invalid_price}")
+        else:
+            _append_lookup_error(priced, "No price breaks available")
         return
 
-    unit_price = parse_price(str(best.get("Price", "")))
-    if unit_price is None:
-        _append_lookup_error(priced, f"Failed to parse price: {best.get('Price')}")
-        return
+    priced.unit_price = plan.unit_price
+    priced.extended_price = plan.extended_price
+    priced.currency = plan.currency
+    priced.price_break_quantity = plan.price_break_quantity
+    priced.required_quantity = plan.required_quantity
+    priced.purchased_quantity = plan.purchased_quantity
+    priced.surplus_quantity = plan.surplus_quantity
+    selected_packaging_modes = [
+        leg.packaging_mode for leg in plan.purchase_legs if leg.packaging_mode
+    ]
+    if selected_packaging_modes:
+        ordered_modes: list[str] = []
+        seen_modes: set[str] = set()
+        for mode in selected_packaging_modes:
+            if mode not in seen_modes:
+                ordered_modes.append(mode)
+                seen_modes.add(mode)
+        priced.packaging_mode = " + ".join(ordered_modes)
+    else:
+        priced.packaging_mode = details.packaging_mode
+    priced.packaging_source = details.packaging_source
+    priced.minimum_order_quantity = details.minimum_order_quantity
+    priced.order_multiple = details.order_multiple
+    priced.full_reel_quantity = details.full_reel_quantity
+    priced.pricing_strategy = plan.pricing_strategy
+    priced.order_plan = plan.order_plan
+    priced.purchase_legs = [leg.model_copy(deep=True) for leg in plan.purchase_legs]
 
-    priced.unit_price = unit_price
-    priced.extended_price = round(unit_price * quantity, 2)
-    priced.currency = best.get("Currency", "EUR")
-    priced.price_break_quantity = int(best.get("Quantity", 0))
+
+def _mouser_offer_from_priced(priced: PricedPart) -> DistributorOffer:
+    """Return a normalized Mouser offer for one priced record."""
+    return DistributorOffer(
+        distributor="Mouser",
+        distributor_part_number=priced.mouser_part_number,
+        manufacturer_part_number=priced.manufacturer_part_number,
+        unit_price=priced.unit_price,
+        extended_price=priced.extended_price,
+        currency=priced.currency,
+        availability=priced.availability,
+        price_break_quantity=priced.price_break_quantity,
+        required_quantity=priced.required_quantity,
+        purchased_quantity=priced.purchased_quantity,
+        surplus_quantity=priced.surplus_quantity,
+        package_type=priced.package_type,
+        packaging_mode=priced.packaging_mode,
+        packaging_source=priced.packaging_source,
+        minimum_order_quantity=priced.minimum_order_quantity,
+        order_multiple=priced.order_multiple,
+        full_reel_quantity=priced.full_reel_quantity,
+        pricing_strategy=priced.pricing_strategy,
+        order_plan=priced.order_plan,
+        match_method=priced.match_method,
+        match_candidates=priced.match_candidates,
+        resolution_source=priced.resolution_source,
+        review_required=priced.review_required,
+        lookup_error=priced.lookup_error,
+        purchase_legs=[leg.model_copy(deep=True) for leg in priced.purchase_legs],
+    )
+
+
+def _packaging_details_for_candidate(
+    client: Any | None,
+    candidate: MouserPart,
+    *,
+    bom_part_number: str | None = None,
+) -> MouserPackagingDetails:
+    """Return packaging constraints using client enrichment when available."""
+    resolver = getattr(client, "packaging_details", None)
+    if callable(resolver):
+        return resolver(candidate, bom_part_number=bom_part_number)
+    return _packaging_details_from_candidate(candidate)
 
 
 def _can_prompt_interactively() -> bool:
@@ -927,17 +1846,26 @@ def _can_prompt_interactively() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def _candidate_unit_price(candidate: ScoredCandidate, quantity: int) -> tuple[str, str]:
+def _candidate_unit_price(
+    candidate: ScoredCandidate,
+    quantity: int,
+    client: Any | None = None,
+    bom_part_number: str | None = None,
+) -> tuple[str, str]:
     """Return printable unit-price text and currency for one candidate."""
-    best = best_price_break(candidate.part.get("PriceBreaks", []), quantity)
-    if not best:
+    plan = best_purchase_plan(
+        candidate.part.get("PriceBreaks", []),
+        quantity,
+        packaging_details=_packaging_details_for_candidate(
+            client,
+            candidate.part,
+            bom_part_number=bom_part_number,
+        ),
+    )
+    if not plan:
         return "—", ""
 
-    value = parse_price(str(best.get("Price", "")))
-    if value is None:
-        return "—", str(best.get("Currency", "") or "")
-
-    return f"{value:.4f}", str(best.get("Currency", "") or "")
+    return f"{plan.unit_price:.4f}", plan.currency
 
 
 def _candidate_package(candidate: ScoredCandidate, manufacturer: str) -> tuple[str, str]:
@@ -980,6 +1908,86 @@ def _saved_resolution_for(
             )
 
     return lookup
+
+
+def _same_part_candidate(left: MouserPart, right: MouserPart) -> bool:
+    """Return whether two Mouser payloads identify the same concrete orderable."""
+    return (
+        str(left.get("MouserPartNumber") or "").strip(),
+        str(left.get("ManufacturerPartNumber") or "").strip(),
+    ) == (
+        str(right.get("MouserPartNumber") or "").strip(),
+        str(right.get("ManufacturerPartNumber") or "").strip(),
+    )
+
+
+def _auto_select_packaging_variant(
+    agg: AggregatedPart,
+    lookup: LookupResult,
+    client: Any | None = None,
+) -> LookupResult:
+    """Switch to the cheapest packaging-only Mouser variant when safe.
+
+    The resolver already knows how to treat tube-vs-reel variants as the same
+    logical electrical part for ambiguity purposes. This helper extends that
+    behavior into pricing by comparing the actual purchase spend across the
+    packaging-equivalent candidates and picking the cheapest one unless a human,
+    saved, or AI-driven resolution already chose a specific orderable.
+    """
+    if (
+        lookup.part is None
+        or lookup.resolution_source is not None
+        or not lookup.candidates
+    ):
+        return lookup
+
+    equivalent_candidates = [
+        candidate
+        for candidate in lookup.candidates
+        if _same_part_candidate(candidate.part, lookup.part)
+        or is_packaging_variant(candidate.part, lookup.part, agg.manufacturer)
+    ]
+    if len(equivalent_candidates) < 2:
+        return lookup
+
+    priced_equivalents: list[tuple[ScoredCandidate, PurchasePlan]] = []
+    for candidate in equivalent_candidates:
+        if not is_orderable_candidate(candidate.part):
+            continue
+        plan = best_purchase_plan(
+            candidate.part.get("PriceBreaks", []),
+            agg.total_quantity,
+            packaging_details=_packaging_details_for_candidate(
+                client,
+                candidate.part,
+                bom_part_number=agg.part_number,
+            ),
+        )
+        if plan is None:
+            continue
+        priced_equivalents.append((candidate, plan))
+
+    if not priced_equivalents:
+        return lookup
+
+    selected_candidate, _ = min(
+        priced_equivalents,
+        key=lambda item: (
+            item[1].extended_price,
+            item[1].surplus_quantity,
+            -item[0].score,
+            str(item[0].part.get("ManufacturerPartNumber") or ""),
+        ),
+    )
+    if _same_part_candidate(selected_candidate.part, lookup.part):
+        return lookup
+
+    log.debug(
+        "  Switched packaging variant for %s to %s based on lower total spend",
+        agg.part_number,
+        selected_candidate.part.get("ManufacturerPartNumber"),
+    )
+    return replace(lookup, part=selected_candidate.part)
 
 
 def _saved_resolution_fast_path(
@@ -1060,8 +2068,11 @@ def _ai_resolution_for(
     try:
         decision = ai_resolver.rerank(agg, lookup)
     except Exception as e:
-        log.warning("AI resolver failed for %s: %s", agg.part_number, e)
-        return lookup, f"AI resolver failed: {e}"
+        log.exception("Unexpected AI resolver error for %s", agg.part_number)
+        return (
+            lookup,
+            "AI resolver unavailable; deterministic fallback enabled for remaining ambiguous parts.",
+        )
 
     if decision is None:
         return lookup, None
@@ -1084,11 +2095,17 @@ def _ai_resolution_for(
             None,
         )
 
-    note = f"AI resolver abstained: {decision.rationale}"
-    if decision.missing_context:
-        note = f"{note}. Missing context: {', '.join(decision.missing_context)}"
-    log.debug("  %s", note)
-    return lookup, note
+    if getattr(decision, "is_degraded", False):
+        if getattr(decision, "technical_details", None):
+            log.debug(
+                "  AI resolver degraded for %s: %s",
+                agg.part_number,
+                decision.technical_details,
+            )
+        return lookup, decision.rationale if getattr(decision, "emit_user_notice", False) else None
+
+    log.debug("  AI abstained for %s: %s", agg.part_number, decision.rationale)
+    return lookup, None
 
 
 def _interactive_resolution_prompt(
@@ -1096,6 +2113,7 @@ def _interactive_resolution_prompt(
     lookup: LookupResult,
     resolution_store: Any | None,
     page_size: int = 8,
+    client: Any | None = None,
 ) -> LookupResult:
     """Prompt the user to choose a candidate for an ambiguous part.
 
@@ -1132,7 +2150,12 @@ def _interactive_resolution_prompt(
         for idx in range(start, end):
             candidate = lookup.candidates[idx]
             package_text, pins_text = _candidate_package(candidate, agg.manufacturer)
-            unit_text, currency = _candidate_unit_price(candidate, agg.total_quantity)
+            unit_text, currency = _candidate_unit_price(
+                candidate,
+                agg.total_quantity,
+                client,
+                agg.part_number,
+            )
             availability = str(candidate.part.get("Availability") or "—")
             availability = availability[:16]
             print(
@@ -1227,7 +2250,13 @@ def price_part(
             lookup = _saved_resolution_for(agg, lookup, resolution_store)
         lookup, ai_note = _ai_resolution_for(agg, lookup, ai_resolver)
         if interactive:
-            lookup = _interactive_resolution_prompt(agg, lookup, resolution_store)
+            lookup = _interactive_resolution_prompt(
+                agg,
+                lookup,
+                resolution_store,
+                client=client,
+            )
+        lookup = _auto_select_packaging_variant(agg, lookup, client)
         priced.match_method = lookup.method
         priced.match_candidates = lookup.candidate_count
         priced.resolution_source = lookup.resolution_source
@@ -1241,9 +2270,18 @@ def price_part(
 
         mouser_part = lookup.part
         priced.mouser_part_number = mouser_part.get("MouserPartNumber")
+        priced.manufacturer_part_number = mouser_part.get("ManufacturerPartNumber")
         priced.availability = mouser_part.get("Availability")
 
         _apply_package_info(priced, mouser_part, agg.manufacturer)
+        packaging_details = _packaging_details_for_candidate(
+            client,
+            mouser_part,
+            bom_part_number=agg.part_number,
+        )
+
+        if ai_note:
+            _append_lookup_error(priced, ai_note)
 
         if lookup.review_required and lookup.resolution_source is None:
             matched_mpn = mouser_part.get("ManufacturerPartNumber", "")
@@ -1252,10 +2290,13 @@ def price_part(
                 f"Fuzzy match: resolved to {matched_mpn} "
                 f"({lookup.candidate_count} candidates) — verify manually",
             )
-            if ai_note:
-                _append_lookup_error(priced, ai_note)
 
-        _apply_price_break(priced, mouser_part.get("PriceBreaks", []), agg.total_quantity)
+        _apply_price_break(
+            priced,
+            mouser_part.get("PriceBreaks", []),
+            agg.total_quantity,
+            packaging_details=packaging_details,
+        )
 
     except httpx.HTTPStatusError as e:
         priced.lookup_error = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
@@ -1263,6 +2304,9 @@ def price_part(
         log.exception("Unexpected error pricing %s", agg.part_number)
         priced.lookup_error = str(e)
 
+    mouser_offer = _mouser_offer_from_priced(priced)
+    priced.offers = [mouser_offer]
+    priced.apply_selected_offer(mouser_offer)
     return priced
 
 

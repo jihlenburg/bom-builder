@@ -12,6 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from mouser import (
     MouserClient,
     _build_lookup_passes,
+    _packaging_details_from_candidate,
+    _packaging_details_from_product_page_html,
+    MouserPackagingDetails,
+    best_purchase_plan,
     best_price_break,
     detect_input_qualifiers,
     is_non_component,
@@ -228,6 +232,166 @@ class TestBestPriceBreak:
         assert best_price_break([], 1000) is None
 
 
+class TestBestPurchasePlan:
+    def test_prefers_buying_up_to_the_next_break_when_total_spend_drops(self):
+        breaks = [
+            {"Quantity": "1", "Price": "0.10", "Currency": "EUR"},
+            {"Quantity": "1000", "Price": "0.09", "Currency": "EUR"},
+        ]
+
+        plan = best_purchase_plan(breaks, 950)
+
+        assert plan is not None
+        assert plan.required_quantity == 950
+        assert plan.purchased_quantity == 1000
+        assert plan.surplus_quantity == 50
+        assert plan.extended_price == pytest.approx(90.0)
+        assert plan.pricing_strategy == "next price break"
+
+    def test_prefers_mouser_full_reel_price_table_when_it_is_cheaper(self):
+        breaks = [
+            {"Quantity": "1", "Price": "1.16", "Currency": "EUR"},
+            {"Quantity": "1000", "Price": "0.592", "Currency": "EUR"},
+        ]
+        details = MouserPackagingDetails(
+            packaging_mode="Reel | Cut Tape | MouseReel",
+            packaging_source="product_page",
+            minimum_order_quantity=1,
+            order_multiple=1,
+            standard_pack_quantity=3000,
+            full_reel_quantity=3000,
+            full_reel_price_breaks=(
+                {"Quantity": "3000", "Price": "0.565", "Currency": "EUR"},
+            ),
+        )
+
+        plan = best_purchase_plan(breaks, 2950, packaging_details=details)
+
+        assert plan is not None
+        assert plan.purchased_quantity == 3000
+        assert plan.extended_price == pytest.approx(1695.0)
+        assert plan.pricing_strategy == "full reel"
+
+    def test_prefers_mixed_reel_and_cut_tape_when_it_is_cheaper(self):
+        breaks = [
+            {"Quantity": "1", "Price": "1.00", "Currency": "EUR"},
+            {"Quantity": "500", "Price": "0.60", "Currency": "EUR"},
+            {"Quantity": "1000", "Price": "0.55", "Currency": "EUR"},
+        ]
+        details = MouserPackagingDetails(
+            packaging_mode="Reel | Cut Tape | MouseReel",
+            packaging_source="product_page",
+            minimum_order_quantity=1,
+            order_multiple=1,
+            standard_pack_quantity=1800,
+            full_reel_quantity=1800,
+            full_reel_price_breaks=(
+                {"Quantity": "1800", "Price": "0.40", "Currency": "EUR"},
+            ),
+        )
+
+        plan = best_purchase_plan(breaks, 6000, packaging_details=details)
+
+        assert plan is not None
+        assert plan.purchased_quantity == 6000
+        assert plan.surplus_quantity == 0
+        assert plan.extended_price == pytest.approx(2520.0)
+        assert plan.pricing_strategy == "mixed packaging"
+        assert plan.order_plan == "3 reels x 1800 + 600 cut tape"
+        assert len(plan.purchase_legs) == 2
+
+
+class TestPackagingDetails:
+    def test_extracts_packaging_constraints_from_search_payload(self):
+        candidate = {
+            "Packaging": "Reel, Cut Tape, MouseReel",
+            "ReelingAvailability": "Full Reel (Order in multiples of 3000)",
+            "MinimumOrderQuantity": "1",
+            "OrderQuantityMultiples": "1",
+            "StandardPackQuantity": "3000",
+        }
+
+        details = _packaging_details_from_candidate(candidate)
+
+        assert details.packaging_mode == "Reel, Cut Tape, MouseReel | Full Reel (Order in multiples of 3000)"
+        assert details.minimum_order_quantity == 1
+        assert details.order_multiple == 1
+        assert details.full_reel_quantity == 3000
+        assert details.packaging_source == "search_api"
+
+    def test_parses_full_reel_price_table_from_product_page_html(self):
+        html = """
+        <html><body>
+        <div>Minimum: 1 Multiples: 1</div>
+        <div>Packaging:</div>
+        <div>Full Reel (Order in multiples of 3000)</div>
+        <div>Cut Tape</div>
+        <div>MouseReel</div>
+        <div>Pricing (EUR)</div>
+        <div>Qty. Unit Price Ext. Price</div>
+        <div>Cut Tape / MouseReel</div>
+        <div>1 1,16 € 1,16 €</div>
+        <div>1000 0,592 € 592,00 €</div>
+        <div>Full Reel (Order in multiples of 3000)</div>
+        <div>3000 0,565 € 1.695,00 €</div>
+        <div>6000 0,55 € 3.300,00 €</div>
+        <div>Packaging Choice</div>
+        </body></html>
+        """
+
+        details = _packaging_details_from_product_page_html(html)
+
+        assert details.minimum_order_quantity == 1
+        assert details.order_multiple == 1
+        assert details.full_reel_quantity == 3000
+        assert len(details.full_reel_price_breaks) == 2
+        assert details.full_reel_price_breaks[0]["Quantity"] == "3000"
+        assert details.full_reel_price_breaks[0]["Price"] == "0,565 €"
+
+    def test_prefers_embedded_packaging_data_over_visible_text_scrape(self):
+        html = """
+        <html><body>
+        <script>
+        window.__PRODUCT_DETAIL__ = {
+          "product": {
+            "packaging": "Reel",
+            "reelingAvailability": "Full Reel (Order in multiples of 3000)",
+            "minimumOrderQuantity": "5",
+            "orderQuantityMultiples": "5",
+            "fullReelQuantity": "3000",
+            "packagingOptions": [
+              {
+                "label": "Full Reel",
+                "priceBreaks": [
+                  {"Quantity": "3000", "Price": "0.565", "Currency": "EUR"}
+                ]
+              }
+            ]
+          }
+        };
+        </script>
+        <div>Minimum: 1 Multiples: 1</div>
+        <div>Packaging:</div>
+        <div>Full Reel (Order in multiples of 2000)</div>
+        <div>Pricing (EUR)</div>
+        <div>Qty. Unit Price Ext. Price</div>
+        <div>Full Reel (Order in multiples of 2000)</div>
+        <div>2000 0,600 € 1.200,00 €</div>
+        <div>Packaging Choice</div>
+        </body></html>
+        """
+
+        details = _packaging_details_from_product_page_html(html)
+
+        assert details.packaging_source == "product_page_embedded + product_page"
+        assert details.minimum_order_quantity == 5
+        assert details.order_multiple == 5
+        assert details.full_reel_quantity == 3000
+        assert details.full_reel_price_breaks == (
+            {"Quantity": "3000", "Price": "0.565", "Currency": "EUR"},
+        )
+
+
 class TestPackagingVariants:
     def test_ti_tube_and_reel_variants_are_packaging_only(self):
         tube = {
@@ -265,6 +429,125 @@ class StubMouserClient:
 
 
 class TestPricePart:
+    def test_uses_cheaper_price_break_overbuy_when_it_reduces_total_spend(self):
+        responses = {
+            ("PART1", "Exact"): [
+                {
+                    "Manufacturer": "Texas Instruments",
+                    "ManufacturerPartNumber": "PART1",
+                    "MouserPartNumber": "595-PART1",
+                    "Description": "Exact match",
+                    "Availability": "100 In Stock",
+                    "PriceBreaks": [
+                        {"Quantity": "1", "Price": "0.10", "Currency": "EUR"},
+                        {"Quantity": "1000", "Price": "0.09", "Currency": "EUR"},
+                    ],
+                }
+            ],
+        }
+        agg = AggregatedPart(
+            part_number="PART1",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=950,
+        )
+
+        priced = price_part(agg, StubMouserClient(responses))
+
+        assert priced.extended_price == pytest.approx(90.0)
+        assert priced.unit_price == pytest.approx(0.09)
+        assert priced.required_quantity == 950
+        assert priced.purchased_quantity == 1000
+        assert priced.surplus_quantity == 50
+        assert priced.pricing_strategy == "next price break"
+
+    def test_records_mixed_reel_and_cut_tape_plan_in_priced_part(self):
+        responses = {
+            ("PART2", "Exact"): [
+                {
+                    "Manufacturer": "Texas Instruments",
+                    "ManufacturerPartNumber": "PART2",
+                    "MouserPartNumber": "595-PART2",
+                    "Description": "Exact match",
+                    "Availability": "100000 In Stock",
+                    "Packaging": "Reel, Cut Tape, MouseReel",
+                    "ReelingAvailability": "Full Reel (Order in multiples of 1800)",
+                    "MinimumOrderQuantity": "1",
+                    "OrderQuantityMultiples": "1",
+                    "StandardPackQuantity": "1800",
+                    "PriceBreaks": [
+                        {"Quantity": "1", "Price": "1.00", "Currency": "EUR"},
+                        {"Quantity": "500", "Price": "0.60", "Currency": "EUR"},
+                        {"Quantity": "1000", "Price": "0.55", "Currency": "EUR"},
+                    ],
+                }
+            ],
+        }
+        client = StubMouserClient(responses)
+        client.packaging_details = lambda candidate, **kwargs: MouserPackagingDetails(
+            packaging_mode="Reel | Cut Tape | MouseReel",
+            packaging_source="product_page",
+            minimum_order_quantity=1,
+            order_multiple=1,
+            standard_pack_quantity=1800,
+            full_reel_quantity=1800,
+            full_reel_price_breaks=(
+                {"Quantity": "1800", "Price": "0.40", "Currency": "EUR"},
+            ),
+        )
+        agg = AggregatedPart(
+            part_number="PART2",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=6,
+            total_quantity=6000,
+        )
+
+        priced = price_part(agg, client)
+
+        assert priced.extended_price == pytest.approx(2520.0)
+        assert priced.purchased_quantity == 6000
+        assert priced.surplus_quantity == 0
+        assert priced.pricing_strategy == "mixed packaging"
+        assert priced.order_plan == "3 reels x 1800 + 600 cut tape"
+        assert len(priced.purchase_legs) == 2
+        assert priced.packaging_mode == "Full Reel + Cut Tape"
+
+    def test_switches_to_cheapest_packaging_variant(self):
+        responses = {
+            ("PART", "Exact"): [
+                {
+                    "Manufacturer": "Texas Instruments",
+                    "ManufacturerPartNumber": "PARTT",
+                    "MouserPartNumber": "595-PARTT",
+                    "Description": "Tube packaging",
+                    "Availability": "100 In Stock",
+                    "PriceBreaks": [{"Quantity": "1", "Price": "0.10", "Currency": "EUR"}],
+                },
+                {
+                    "Manufacturer": "Texas Instruments",
+                    "ManufacturerPartNumber": "PARTR",
+                    "MouserPartNumber": "595-PARTR",
+                    "Description": "Tape reel packaging",
+                    "Availability": "1000 In Stock",
+                    "PriceBreaks": [{"Quantity": "1000", "Price": "0.09", "Currency": "EUR"}],
+                },
+            ],
+        }
+        agg = AggregatedPart(
+            part_number="PART",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=950,
+        )
+
+        priced = price_part(agg, StubMouserClient(responses))
+
+        assert priced.mouser_part_number == "595-PARTR"
+        assert priced.manufacturer_part_number == "PARTR"
+        assert priced.extended_price == pytest.approx(90.0)
+        assert priced.purchased_quantity == 1000
+        assert priced.surplus_quantity == 50
+
     def test_saved_resolution_fast_path_uses_direct_exact_lookup(self, tmp_path):
         responses = {
             ("595-PARTB-Q1", "Exact"): [
@@ -682,6 +965,66 @@ class TestPricePart:
 
 
 class TestMouserClient:
+    def test_packaging_details_do_not_fetch_product_page_by_default(self):
+        client = MouserClient(api_key="dummy", cache_enabled=False)
+
+        class RecordingTransport:
+            def get(self, url, follow_redirects=True):
+                raise AssertionError("product page fallback should stay disabled by default")
+
+            def close(self):
+                pass
+
+        client._client = RecordingTransport()
+
+        details = client.packaging_details(
+            {"ProductDetailUrl": "https://example.com/product"}
+        )
+
+        assert details.packaging_source is None
+
+    def test_packaging_details_can_use_explicit_product_page_fallback(self):
+        client = MouserClient(
+            api_key="dummy",
+            cache_enabled=False,
+            allow_product_page_fallback=True,
+        )
+
+        class RecordingTransport:
+            def __init__(self):
+                self.calls = 0
+
+            def get(self, url, follow_redirects=True):
+                self.calls += 1
+                request = httpx.Request("GET", url)
+                return httpx.Response(
+                    200,
+                    text=(
+                        "<html><body><div>Minimum: 1 Multiples: 1</div>"
+                        "<div>Full Reel (Order in multiples of 3000)</div>"
+                        "<div>Pricing (EUR)</div>"
+                        "<div>Qty. Unit Price Ext. Price</div>"
+                        "<div>Full Reel (Order in multiples of 3000)</div>"
+                        "<div>3000 0,565 € 1.695,00 €</div>"
+                        "<div>Packaging Choice</div></body></html>"
+                    ),
+                    request=request,
+                )
+
+            def close(self):
+                pass
+
+        transport = RecordingTransport()
+        client._client = transport
+
+        details = client.packaging_details(
+            {"ProductDetailUrl": "https://example.com/product"}
+        )
+
+        assert transport.calls == 1
+        assert details.packaging_source == "product_page"
+        assert details.full_reel_quantity == 3000
+
     def test_rotates_to_backup_key_after_daily_limit(self, monkeypatch):
         client = MouserClient(api_key="primary-key", cache_enabled=False)
         client.api_keys = ("primary-key", "backup-key")

@@ -1,10 +1,15 @@
-SPHINXBUILD ?= sphinx-build
+PYTHON ?= python
+SPHINXBUILD ?= $(PYTHON) -m sphinx
 SOURCEDIR = .
 BUILDDIR = _build
 
-.PHONY: html clean
+.PHONY: api html clean
 
-html:
+api:
+	rm -rf api/generated
+	$(PYTHON) generate_api_index.py
+
+html: api
 	$(SPHINXBUILD) -b html $(SOURCEDIR) $(BUILDDIR)/html
 
 clean:

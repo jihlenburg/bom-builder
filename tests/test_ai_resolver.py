@@ -197,16 +197,19 @@ class TestOpenAIResolver:
             ),
         )
 
-        try:
-            resolver.rerank(agg, lookup)
-        except ai_resolver.httpx.HTTPStatusError:
-            pass
+        first = resolver.rerank(agg, lookup)
+        assert first is not None
+        assert first.decision == "abstain"
+        assert first.is_degraded is True
+        assert first.emit_user_notice is True
+        assert "authentication failed" in first.rationale.lower()
 
         decision = resolver.rerank(agg, lookup)
 
         assert decision is not None
         assert decision.decision == "abstain"
-        assert "disabled" in decision.rationale
+        assert "fallback remains enabled" in decision.rationale.lower()
+        assert decision.emit_user_notice is False
         assert len(fake_client.requests) == 1
 
     def test_reads_nested_message_output_text(self, monkeypatch):
@@ -270,7 +273,7 @@ class TestOpenAIResolver:
         assert decision.decision == "abstain"
         assert decision.missing_context == ("package",)
 
-    def test_incomplete_response_raises_clear_error(self, monkeypatch):
+    def test_incomplete_response_becomes_degraded_abstain(self, monkeypatch):
         fake_client = _FakeClient(
             {
                 "status": "incomplete",
@@ -304,5 +307,104 @@ class TestOpenAIResolver:
             ),
         )
 
-        with pytest.raises(ValueError, match="OpenAI response incomplete: max_output_tokens"):
-            resolver.rerank(agg, lookup)
+        decision = resolver.rerank(agg, lookup)
+
+        assert decision is not None
+        assert decision.decision == "abstain"
+        assert decision.is_degraded is True
+        assert "response invalid" in decision.rationale.lower()
+        assert "incomplete: max_output_tokens" in (decision.technical_details or "")
+
+    def test_missing_decision_field_becomes_degraded_abstain(self, monkeypatch):
+        fake_client = _FakeClient(
+            {
+                "output_text": json.dumps(
+                    {
+                        "selected_index": 1,
+                        "confidence": 0.9,
+                        "rationale": "Looks good.",
+                        "missing_context": [],
+                    }
+                )
+            }
+        )
+        monkeypatch.setattr(ai_resolver.httpx, "Client", lambda timeout: fake_client)
+
+        resolver = OpenAIResolver(api_key="test-key")
+        agg = AggregatedPart(
+            part_number="PART-Q1",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=100,
+        )
+        lookup = LookupResult(
+            part={"ManufacturerPartNumber": "PARTA-Q1", "MouserPartNumber": "595-PARTA-Q1"},
+            method=MatchMethod.FUZZY,
+            candidate_count=1,
+            review_required=True,
+            candidates=(
+                ScoredCandidate(
+                    part={
+                        "ManufacturerPartNumber": "PARTA-Q1",
+                        "MouserPartNumber": "595-PARTA-Q1",
+                        "Description": "Only option",
+                    },
+                    score=10,
+                ),
+            ),
+        )
+
+        decision = resolver.rerank(agg, lookup)
+
+        assert decision is not None
+        assert decision.decision == "abstain"
+        assert decision.is_degraded is True
+        assert "response invalid" in decision.rationale.lower()
+        assert "missing required fields: decision" in (decision.technical_details or "")
+
+    def test_repeated_invalid_response_notice_is_suppressed(self, monkeypatch):
+        fake_client = _FakeClient(
+            {
+                "output_text": json.dumps(
+                    {
+                        "selected_index": 1,
+                        "confidence": 0.9,
+                        "rationale": "Looks good.",
+                        "missing_context": [],
+                    }
+                )
+            }
+        )
+        monkeypatch.setattr(ai_resolver.httpx, "Client", lambda timeout: fake_client)
+
+        resolver = OpenAIResolver(api_key="test-key")
+        agg = AggregatedPart(
+            part_number="PART-Q1",
+            manufacturer="Texas Instruments",
+            quantity_per_unit=1,
+            total_quantity=100,
+        )
+        lookup = LookupResult(
+            part={"ManufacturerPartNumber": "PARTA-Q1", "MouserPartNumber": "595-PARTA-Q1"},
+            method=MatchMethod.FUZZY,
+            candidate_count=1,
+            review_required=True,
+            candidates=(
+                ScoredCandidate(
+                    part={
+                        "ManufacturerPartNumber": "PARTA-Q1",
+                        "MouserPartNumber": "595-PARTA-Q1",
+                        "Description": "Only option",
+                    },
+                    score=10,
+                ),
+            ),
+        )
+
+        first = resolver.rerank(agg, lookup)
+        second = resolver.rerank(agg, lookup)
+
+        assert first is not None
+        assert second is not None
+        assert first.emit_user_notice is True
+        assert second.emit_user_notice is False

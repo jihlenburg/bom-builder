@@ -5,14 +5,16 @@ this kind of project, so the "Pythonic" approach is explicit module and API
 documentation plus a tiny, transparent implementation. Secret resolution is
 intentionally boring:
 
-1. a local ``.env`` file loaded through :mod:`python-dotenv`
-2. inherited process environment variables
+1. inherited process environment variables
+2. a local ``.env`` file loaded through :mod:`python-dotenv`
 
-The local ``.env`` file is intentionally loaded with override enabled so the
-project's checked workflow is not silently hijacked by unrelated parent-shell
-environment variables. The module does not write secrets, decrypt them, or
-talk to an external secrets backend. Its only job is to map well-known logical
-secret names to the environment variables that hold them.
+The local ``.env`` file is loaded without overriding existing process
+environment variables. That keeps one-shot shell overrides such as
+``BOM_BUILDER_CACHE_DB=/tmp/... python main.py ...`` working as expected while
+still providing a simple default local developer configuration. The module
+does not write secrets, decrypt them, or talk to an external secrets backend.
+Its only job is to map well-known logical secret names to the environment
+variables that hold them.
 """
 
 import os
@@ -21,7 +23,7 @@ from dataclasses import dataclass
 
 from dotenv import find_dotenv, load_dotenv
 
-load_dotenv(find_dotenv(usecwd=True), override=True)
+load_dotenv(find_dotenv(usecwd=True), override=False)
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,41 @@ SECRET_SPECS: dict[str, SecretSpec] = {
         name="openai_api_key",
         env_var="OPENAI_API_KEY",
         description="OpenAI API key",
+    ),
+    "digikey_client_id": SecretSpec(
+        name="digikey_client_id",
+        env_var="DIGIKEY_CLIENT_ID",
+        description="Digi-Key OAuth client ID",
+    ),
+    "digikey_client_secret": SecretSpec(
+        name="digikey_client_secret",
+        env_var="DIGIKEY_CLIENT_SECRET",
+        description="Digi-Key OAuth client secret",
+    ),
+    "digikey_account_id": SecretSpec(
+        name="digikey_account_id",
+        env_var="DIGIKEY_ACCOUNT_ID",
+        description="Digi-Key Account ID for account-aware product and pricing calls",
+    ),
+    "ti_store_api_key": SecretSpec(
+        name="ti_store_api_key",
+        env_var="TI_STORE_API_KEY",
+        description="TI Store API client key",
+    ),
+    "ti_store_api_secret": SecretSpec(
+        name="ti_store_api_secret",
+        env_var="TI_STORE_API_SECRET",
+        description="TI Store API client secret",
+    ),
+    "ti_product_api_key": SecretSpec(
+        name="ti_product_api_key",
+        env_var="TI_PRODUCT_API_KEY",
+        description="Legacy TI Product Information API client key",
+    ),
+    "ti_product_api_secret": SecretSpec(
+        name="ti_product_api_secret",
+        env_var="TI_PRODUCT_API_SECRET",
+        description="Legacy TI Product Information API client secret",
     ),
 }
 

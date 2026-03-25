@@ -1,0 +1,16 @@
+{
+  "blocked": false,
+  "bom_part_number": "TMP421-Q1",
+  "captured_at": "2026-03-23T10:27:22+00:00",
+  "manufacturer": "Texas Instruments",
+  "manufacturer_part_number": "TMP421AQDCNRQ1",
+  "packaging_details": {
+    "full_reel_quantity": 3000,
+    "minimum_order_quantity": null,
+    "order_multiple": null,
+    "packaging_mode": "LARGE T&R",
+    "packaging_source": "manufacturer_ti_page",
+    "standard_pack_quantity": 3000
+  },
+  "url": "https://www.ti.com/product/TMP421-Q1/part-details/TMP421AQDCNRQ1"
+}

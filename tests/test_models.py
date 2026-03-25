@@ -11,9 +11,11 @@ from models import (
     AggregatedPart,
     BomSummary,
     Design,
+    DistributorOffer,
     MatchMethod,
     Part,
     PricedPart,
+    PurchaseLeg,
 )
 
 
@@ -76,8 +78,10 @@ class TestPricedPart:
         priced = PricedPart.from_aggregated(agg)
         assert priced.part_number == "X"
         assert priced.total_quantity == 3000
+        assert priced.required_quantity == 3000
         assert priced.package == "0402"
         assert priced.mouser_part_number is None
+        assert priced.distributor is None
 
     def test_price_must_be_non_negative(self):
         with pytest.raises(ValidationError):
@@ -86,6 +90,69 @@ class TestPricedPart:
                 quantity_per_unit=1, total_quantity=1000,
                 unit_price=-1.0,
             )
+
+    def test_apply_selected_offer_sets_generic_fields(self):
+        priced = PricedPart(
+            part_number="X",
+            manufacturer="Y",
+            quantity_per_unit=1,
+            total_quantity=100,
+        )
+        offer = DistributorOffer(
+            distributor="Digi-Key",
+            distributor_part_number="P5555-ND",
+            manufacturer_part_number="ECA-1VHG102",
+            unit_price=0.5,
+            extended_price=50.0,
+            currency="EUR",
+            required_quantity=100,
+            purchased_quantity=110,
+            surplus_quantity=10,
+            package_type="Tape & Reel",
+            packaging_mode="Full Reel",
+            packaging_source="digikey_api",
+            minimum_order_quantity=100,
+            order_multiple=100,
+            full_reel_quantity=100,
+            pricing_strategy="Better Value",
+            order_plan="1 reel x 100",
+            purchase_legs=[
+                PurchaseLeg(
+                    purchased_quantity=100,
+                    unit_price=0.5,
+                    extended_price=50.0,
+                    currency="EUR",
+                    price_break_quantity=100,
+                    pricing_strategy="Better Value",
+                    packaging_mode="Full Reel",
+                    order_batch_quantity=100,
+                    order_batch_count=1,
+                )
+            ],
+        )
+
+        priced.apply_selected_offer(offer)
+
+        assert priced.distributor == "Digi-Key"
+        assert priced.distributor_part_number == "P5555-ND"
+        assert priced.manufacturer_part_number == "ECA-1VHG102"
+        assert priced.unit_price == 0.5
+        assert priced.extended_price == 50.0
+        assert priced.required_quantity == 100
+        assert priced.purchased_quantity == 110
+        assert priced.surplus_quantity == 10
+        assert priced.package_type == "Tape & Reel"
+        assert priced.packaging_mode == "Full Reel"
+        assert priced.packaging_source == "digikey_api"
+        assert priced.minimum_order_quantity == 100
+        assert priced.order_multiple == 100
+        assert priced.full_reel_quantity == 100
+        assert priced.pricing_strategy == "Better Value"
+        assert priced.order_plan == "1 reel x 100"
+        assert len(priced.purchase_legs) == 1
+        assert priced.purchase_legs[0].order_batch_count == 1
+        assert priced.has_surplus_purchase is True
+        assert priced.mouser_part_number is None
 
 
 class TestBomSummary:

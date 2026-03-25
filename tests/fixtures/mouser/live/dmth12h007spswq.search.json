@@ -1,0 +1,115 @@
+{
+  "SearchResults": {
+    "Parts": [
+      {
+        "AlternatePackagings": null,
+        "AvailabilityInStock": "0",
+        "AvailabilityOnOrder": [
+          {
+            "Date": "2026-08-19T00:00:00",
+            "Quantity": 2496
+          }
+        ],
+        "Category": "MOSFETs",
+        "DataSheetUrl": "https://www.mouser.com/datasheet/3/175/1/DMTH12H007SPSWQ.pdf",
+        "Description": "MOSFETs MOSFET BVDSS: 101V 250V PowerDI5060-8/SWP T&R 2.5K",
+        "FactoryStock": "0",
+        "ImagePath": "https://www.mouser.com/images/diodesinc/images/ITP_621-MTH12H007SPSWQ13_t.jpg",
+        "InfoMessages": [],
+        "LeadTime": "168 Days",
+        "LifecycleStatus": null,
+        "Manufacturer": "Diodes Incorporated",
+        "ManufacturerPartNumber": "DMTH12H007SPSWQ-13",
+        "Min": "1",
+        "MouserPartNumber": "621-MTH12H007SPSWQ13",
+        "Mult": "1",
+        "MultiSimBlue": 0,
+        "PriceBreaks": [
+          {
+            "Currency": "EUR",
+            "Price": "2,37 \u20ac",
+            "Quantity": 1
+          },
+          {
+            "Currency": "EUR",
+            "Price": "1,53 \u20ac",
+            "Quantity": 10
+          },
+          {
+            "Currency": "EUR",
+            "Price": "1,09 \u20ac",
+            "Quantity": 100
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,92 \u20ac",
+            "Quantity": 500
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,792 \u20ac",
+            "Quantity": 1000
+          },
+          {
+            "Currency": "EUR",
+            "Price": "0,792 \u20ac",
+            "Quantity": 2500
+          }
+        ],
+        "ProductAttributes": [
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Reel"
+          },
+          {
+            "AttributeName": "Packaging",
+            "AttributeValue": "Cut Tape"
+          },
+          {
+            "AttributeCost": "A MouseReel\u2122 fee of 5,00 \u20ac will be added and calculated in your basket. All MouseReel\u2122 orders are non-cancellable and non-returnable.",
+            "AttributeName": "Packaging",
+            "AttributeValue": "MouseReel"
+          },
+          {
+            "AttributeName": "Standard Pack Qty",
+            "AttributeValue": "2500"
+          }
+        ],
+        "ProductCompliance": [
+          {
+            "ComplianceName": "TARIC",
+            "ComplianceValue": "8541290000"
+          },
+          {
+            "ComplianceName": "CAHTS",
+            "ComplianceValue": "8541290000"
+          },
+          {
+            "ComplianceName": "USHTS",
+            "ComplianceValue": "8541290065"
+          },
+          {
+            "ComplianceName": "JPHTS",
+            "ComplianceValue": "854129000"
+          },
+          {
+            "ComplianceName": "MXHTS",
+            "ComplianceValue": "8541299900"
+          },
+          {
+            "ComplianceName": "ECCN",
+            "ComplianceValue": "EAR99"
+          }
+        ],
+        "ProductDetailUrl": "https://www.mouser.de/ProductDetail/Diodes-Incorporated/DMTH12H007SPSWQ-13?qs=vvQtp7zwQdNFx6lkd5xaIw%3D%3D",
+        "REACH-SVHC": [
+          "Lead (7439-92-1)"
+        ],
+        "ROHSStatus": "RoHS Compliant By Exemption",
+        "Reeling": true,
+        "SuggestedReplacement": "",
+        "SurchargeMessages": null
+      }
+    ]
+  }
+}

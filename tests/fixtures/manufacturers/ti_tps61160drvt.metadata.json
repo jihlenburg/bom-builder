@@ -1,0 +1,16 @@
+{
+  "blocked": false,
+  "bom_part_number": "TPS61160",
+  "captured_at": "2026-03-23T10:27:22+00:00",
+  "manufacturer": "Texas Instruments",
+  "manufacturer_part_number": "TPS61160DRVT",
+  "packaging_details": {
+    "full_reel_quantity": null,
+    "minimum_order_quantity": null,
+    "order_multiple": null,
+    "packaging_mode": "SMALL T&R",
+    "packaging_source": "manufacturer_ti_page",
+    "standard_pack_quantity": 250
+  },
+  "url": "https://www.ti.com/product/TPS61160/part-details/TPS61160DRVT"
+}

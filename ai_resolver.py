@@ -57,6 +57,16 @@ class AIRerankDecision:
     missing_context:
         Tuple of context items the model believes would be needed to make a
         safe automatic selection.
+    degradation_reason:
+        Optional short classifier when the AI stage degraded locally and the
+        resolver fell back to the deterministic path.
+    technical_details:
+        Optional low-level detail intended for verbose logs and traces rather
+        than user-facing console output.
+    emit_user_notice:
+        Whether the caller should surface :attr:`rationale` to the console.
+        This lets the resolver emit one-shot degraded-mode notices without
+        repeating the same message for every remaining ambiguous part.
     """
 
     decision: str
@@ -64,11 +74,19 @@ class AIRerankDecision:
     confidence: float
     rationale: str
     missing_context: tuple[str, ...]
+    degradation_reason: str | None = None
+    technical_details: str | None = None
+    emit_user_notice: bool = False
 
     @property
     def is_select(self) -> bool:
         """Return ``True`` when the decision is a concrete candidate choice."""
         return self.decision == "select" and self.selected_index > 0
+
+    @property
+    def is_degraded(self) -> bool:
+        """Return ``True`` when the AI stage locally failed and fell back."""
+        return bool(self.degradation_reason)
 
 
 class OpenAIResolver:
@@ -121,6 +139,8 @@ class OpenAIResolver:
         self.max_candidates = max_candidates
         self._client = httpx.Client(timeout=timeout)
         self._disabled_reason = ""
+        self._disabled_notice_key = ""
+        self._announced_notice_keys: set[str] = set()
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -162,24 +182,101 @@ class OpenAIResolver:
         request for every remaining ambiguous part.
         """
         if self._disabled_reason:
-            return _abstain_decision(f"AI resolver disabled: {self._disabled_reason}")
+            return self._degraded_abstain(
+                "AI resolver unavailable; deterministic fallback remains enabled.",
+                notice_key=self._disabled_notice_key or f"disabled:{self._disabled_reason}",
+                degradation_reason="disabled",
+                technical_details=f"AI resolver disabled: {self._disabled_reason}",
+            )
         if not lookup.candidates:
             return None
 
         shortlist = tuple(lookup.candidates[: self.max_candidates])
-        response = self._client.post(
-            OPENAI_RESPONSES_URL,
-            headers=_request_headers(self.api_key),
-            json=self._build_payload(agg, lookup, shortlist),
-        )
+        try:
+            response = self._client.post(
+                OPENAI_RESPONSES_URL,
+                headers=_request_headers(self.api_key),
+                json=self._build_payload(agg, lookup, shortlist),
+            )
+        except httpx.TimeoutException as e:
+            self._disabled_reason = "request timed out"
+            self._disabled_notice_key = "timeout"
+            return self._degraded_abstain(
+                "AI resolver timed out; deterministic fallback enabled for remaining ambiguous parts.",
+                notice_key="timeout",
+                degradation_reason="timeout",
+                technical_details=str(e),
+            )
+        except httpx.RequestError as e:
+            self._disabled_reason = "request error"
+            self._disabled_notice_key = "request-error"
+            return self._degraded_abstain(
+                "AI resolver unavailable; deterministic fallback enabled for remaining ambiguous parts.",
+                notice_key="request-error",
+                degradation_reason="request_error",
+                technical_details=str(e),
+            )
+
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
             if e.response.status_code in {401, 403}:
                 self._disabled_reason = f"HTTP {e.response.status_code}"
-            raise
-        decision = _parse_decision_response(response.json())
+                self._disabled_notice_key = f"http-{e.response.status_code}"
+                return self._degraded_abstain(
+                    "AI authentication failed; deterministic fallback enabled for remaining ambiguous parts.",
+                    notice_key=f"http-{e.response.status_code}",
+                    degradation_reason="auth",
+                    technical_details=f"OpenAI API returned HTTP {e.response.status_code}",
+                )
+            if e.response.status_code == 429:
+                self._disabled_reason = "HTTP 429"
+                self._disabled_notice_key = "http-429"
+                return self._degraded_abstain(
+                    "AI rate-limited; deterministic fallback enabled for remaining ambiguous parts.",
+                    notice_key="http-429",
+                    degradation_reason="rate_limit",
+                    technical_details="OpenAI API returned HTTP 429",
+                )
+            self._disabled_reason = f"HTTP {e.response.status_code}"
+            self._disabled_notice_key = f"http-{e.response.status_code}"
+            return self._degraded_abstain(
+                "AI resolver unavailable; deterministic fallback enabled for remaining ambiguous parts.",
+                notice_key=f"http-{e.response.status_code}",
+                degradation_reason="http_error",
+                technical_details=f"OpenAI API returned HTTP {e.response.status_code}",
+            )
+
+        try:
+            decision = _parse_decision_response(response.json())
+        except ValueError as e:
+            self._disabled_reason = "invalid response payload"
+            self._disabled_notice_key = "invalid-response"
+            return self._degraded_abstain(
+                "AI response invalid; deterministic fallback enabled for remaining ambiguous parts.",
+                notice_key="invalid-response",
+                degradation_reason="invalid_response",
+                technical_details=str(e),
+            )
         return _validate_decision(decision, len(shortlist), self.confidence_threshold)
+
+    def _degraded_abstain(
+        self,
+        rationale: str,
+        *,
+        notice_key: str,
+        degradation_reason: str,
+        technical_details: str,
+    ) -> AIRerankDecision:
+        """Return a one-shot degraded abstention decision."""
+        emit_notice = notice_key not in self._announced_notice_keys
+        self._announced_notice_keys.add(notice_key)
+        return _abstain_decision(
+            rationale,
+            degradation_reason=degradation_reason,
+            technical_details=technical_details,
+            emit_user_notice=emit_notice,
+        )
 
     def _build_payload(
         self,
@@ -261,6 +358,9 @@ def _abstain_decision(
     *,
     confidence: float = 0.0,
     missing_context: tuple[str, ...] = (),
+    degradation_reason: str | None = None,
+    technical_details: str | None = None,
+    emit_user_notice: bool = False,
 ) -> AIRerankDecision:
     """Build a normalized abstention decision.
 
@@ -274,6 +374,9 @@ def _abstain_decision(
         confidence=confidence,
         rationale=rationale,
         missing_context=missing_context,
+        degradation_reason=degradation_reason,
+        technical_details=technical_details,
+        emit_user_notice=emit_user_notice,
     )
 
 
@@ -291,7 +394,30 @@ def _parse_decision_response(response_json: dict[str, Any]) -> AIRerankDecision:
         Parsed structured decision payload.
     """
     output_text = _response_output_text(response_json)
-    decision_json = json.loads(output_text)
+    try:
+        decision_json = json.loads(output_text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"OpenAI decision payload was not valid JSON: {e.msg}") from e
+
+    if not isinstance(decision_json, dict):
+        raise ValueError(
+            "OpenAI decision payload was not a JSON object"
+        )
+
+    required_fields = (
+        "decision",
+        "selected_index",
+        "confidence",
+        "rationale",
+        "missing_context",
+    )
+    missing_fields = [field for field in required_fields if field not in decision_json]
+    if missing_fields:
+        raise ValueError(
+            "OpenAI decision payload missing required fields: "
+            + ", ".join(missing_fields)
+        )
+
     return AIRerankDecision(
         decision=str(decision_json["decision"]),
         selected_index=int(decision_json["selected_index"]),
