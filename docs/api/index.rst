@@ -13,6 +13,7 @@ runtime code.
    ai_resolver
    bom
    config
+   console
    digikey
    digikey_auth
    fx

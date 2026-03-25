@@ -46,6 +46,8 @@ from optimizer import (
 from package import extract_package_info
 from secret_store import get_secret, get_secret_values
 
+from console import console, Rule, Table, Text
+
 from mouser_scoring import (  # noqa: E402 — re-exported for backward compatibility
     MANUFACTURER_ALIASES,
     QUALIFIER_RULES,
@@ -1145,20 +1147,36 @@ def _interactive_resolution_prompt(
     while True:
         start = page * page_size
         end = min(start + page_size, total)
-        print()
-        print("=" * 78)
-        print(f"Interactive resolver: {agg.part_number} ({agg.manufacturer})")
+        console.print()
+        console.print(Rule(style="dim"))
+
+        # --- Header ---
+        header = Text()
+        header.append("Interactive resolver: ", style="heading")
+        header.append(agg.part_number, style="part")
+        header.append(f" ({agg.manufacturer})")
+        console.print(header)
         if agg.description:
-            print(f"  {agg.description}")
+            console.print(f"  [dim]{agg.description}[/dim]")
         if agg.package or agg.pins is not None:
-            print(
+            console.print(
                 f"  BOM hints: package={agg.package or '—'} pins={agg.pins if agg.pins is not None else '—'}"
             )
         suggested = lookup.part.get("ManufacturerPartNumber") if lookup.part else "—"
-        print(f"  Suggested: {suggested} [{lookup.method.value}]")
-        print()
-        print("  #  Manufacturer PN          Package      Pins    Unit      Availability")
-        print("  -- ------------------------ ------------ ---- ---------- ----------------")
+        suggested_line = Text("  Suggested: ")
+        suggested_line.append(str(suggested), style="ok")
+        suggested_line.append(f" [{lookup.method.value}]", style="dim")
+        console.print(suggested_line)
+        console.print()
+
+        # --- Candidate table ---
+        table = Table(border_style="dim", padding=(0, 1))
+        table.add_column("#", justify="right", style="dim")
+        table.add_column("Manufacturer PN", style="part")
+        table.add_column("Package")
+        table.add_column("Pins", justify="right")
+        table.add_column("Unit", justify="right", style="price")
+        table.add_column("Availability")
 
         for idx in range(start, end):
             candidate = lookup.candidates[idx]
@@ -1169,20 +1187,25 @@ def _interactive_resolution_prompt(
                 client,
                 agg.part_number,
             )
-            availability = str(candidate.part.get("Availability") or "—")
-            availability = availability[:16]
-            print(
-                f"  {idx + 1:>2} "
-                f"{str(candidate.part.get('ManufacturerPartNumber') or '—')[:24]:24} "
-                f"{package_text[:12]:12} "
-                f"{pins_text:>4} "
-                f"{(unit_text + (' ' + currency if currency else ''))[:10]:10} "
-                f"{availability:16}"
+            availability = str(candidate.part.get("Availability") or "—")[:16]
+            price_cell = f"{unit_text} {currency}".strip() if unit_text else "—"
+            table.add_row(
+                str(idx + 1),
+                str(candidate.part.get("ManufacturerPartNumber") or "—")[:24],
+                package_text[:12],
+                pins_text,
+                price_cell[:10],
+                availability,
             )
 
+        console.print(table)
+
         if total > page_size:
-            print(f"\n  Showing candidates {start + 1}-{end} of {total}")
-        print("  Commands: [number] choose, a accept suggested, n/p page, s skip, q quit")
+            console.print(f"\n  Showing candidates {start + 1}-{end} of {total}")
+        console.print(
+            "  Commands: \\[number] choose, a accept suggested, n/p page, s skip, q quit",
+            style="dim",
+        )
 
         try:
             choice = input("  Selection> ").strip().lower()
@@ -1210,10 +1233,10 @@ def _interactive_resolution_prompt(
             if 0 <= index < total:
                 selected = lookup.candidates[index]
             else:
-                print("  Invalid candidate number.")
+                console.print("  [error]Invalid candidate number.[/error]")
                 continue
         else:
-            print("  Unknown command.")
+            console.print("  [error]Unknown command.[/error]")
             continue
 
         if resolution_store is not None:

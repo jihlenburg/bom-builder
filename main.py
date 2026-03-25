@@ -26,6 +26,7 @@ from typing import Callable
 
 from ai_resolver import DEFAULT_AI_MODEL, OpenAIResolver
 from bom import aggregate_parts, load_design
+from console import console, Panel, Rule, Table, Text
 from config import (
     DEFAULT_ATTRITION,
     PROJECT_VERSION,
@@ -377,15 +378,15 @@ def _flush_runtime_paths(*, include_resolutions: bool = False) -> list[Path]:
 
 def _run_flush_action(*, include_resolutions: bool = False) -> None:
     """Flush runtime caches and print a short user-facing summary."""
-    print("Flushing runtime caches and temp files...")
+    console.print("Flushing runtime caches and temp files...")
     if include_resolutions:
-        print("  including saved manual resolutions")
+        console.print("  including saved manual resolutions")
     removed = _flush_runtime_paths(include_resolutions=include_resolutions)
     if removed:
         for path in removed:
-            print(f"  removed {path}")
+            console.print(f"  removed {path}")
     else:
-        print("  nothing to remove")
+        console.print("  nothing to remove")
 
 
 def load_designs(paths: list[Path]) -> list[Design]:
@@ -399,7 +400,7 @@ def load_designs(paths: list[Path]) -> list[Design]:
         if not path.exists():
             print(f"Error: {path} not found", file=sys.stderr)
             raise SystemExit(1)
-        print(f"Loading design: {path}")
+        console.print(f"Loading design: {path}")
         designs.append(load_design(path))
     return designs
 
@@ -426,7 +427,7 @@ def build_input_designs(args: argparse.Namespace) -> list[Design]:
     if args.design:
         return load_designs(args.design)
 
-    print(f"Preparing direct lookup: {args.part_number} ({args.manufacturer})")
+    console.print(f"Preparing direct lookup: {args.part_number} ({args.manufacturer})")
     return [
         Design(
             design="Direct lookup",
@@ -458,7 +459,7 @@ def price_parts(
     persistent manual-resolution store used by interactive runs.
     """
     if args.dry_run:
-        print("\n  [dry-run] Skipping distributor API lookups")
+        console.print("\n  \\[dry-run] Skipping distributor API lookups")
         return [PricedPart.from_aggregated(agg) for agg in aggregated]
 
     if run_started_at is None:
@@ -467,7 +468,7 @@ def price_parts(
     cache_kw = dict(cache_enabled=not args.no_cache,
                      cache_ttl_seconds=int(args.cache_ttl_hours * 3600))
 
-    print("\nLooking up distributor prices...")
+    console.print("\n[heading]Looking up distributor prices...[/heading]")
     with ExitStack() as stack:
         mouser_client = stack.enter_context(MouserClient(
             api_key=args.mouser_api_key, **cache_kw,
@@ -540,10 +541,15 @@ def _price_parts_across_distributors(
         elapsed_before_lookup = lookup_started_at - run_started_at
         source_timings: list[tuple[str, float]] = []
         runtime_notices: list[str] = []
-        print(
-            f"  [{i}/{total} +{_format_elapsed_clock(elapsed_before_lookup)}] "
-            f"Looking up {agg.part_number}..."
+        progress_line = Text()
+        progress_line.append(
+            f"  [{i}/{total} +{_format_elapsed_clock(elapsed_before_lookup)}] ",
+            style="dim",
         )
+        progress_line.append("Looking up ")
+        progress_line.append(agg.part_number, style="part")
+        progress_line.append("...")
+        console.print(progress_line)
         before_mouser_requests = _mouser_request_count(mouser_client)
         mouser_started_at = time.perf_counter()
         priced = price_mouser_part(
@@ -862,18 +868,33 @@ def _print_lookup_status(
     headline = _lookup_headline(priced)
     timing = _lookup_timing_suffix(part_duration, source_timings)
 
-    print(f"{indent}{status:<7} {source:<10} {headline}{timing}")
+    line = Text()
+    line.append(indent)
+    line.append(f"{status:<7}", style=_status_style(status))
+    line.append(f" {source:<10}")
+    line.append(f" {headline}")
+    if timing:
+        line.append(timing, style="dim")
+    console.print(line, soft_wrap=True)
 
     note = _lookup_note(priced)
     if note:
-        print(f"{indent}note: {note}")
+        note_line = Text()
+        note_line.append(f"{indent}note: {note}", style="note")
+        console.print(note_line, soft_wrap=True)
 
 
 def _print_runtime_notices(notices: list[str]) -> None:
     """Print one or more run-level informational notices."""
     indent = " " * 11
     for notice in notices:
-        print(f"{indent}info: {notice}")
+        info_line = Text(f"{indent}info: {notice}", style="note")
+        console.print(info_line, soft_wrap=True)
+
+
+def _status_style(label: str) -> str:
+    """Return the Rich theme style name for a lookup status label."""
+    return {"OK": "ok", "REVIEW": "review", "ERROR": "error"}.get(label, "")
 
 
 def _lookup_timing_suffix(
@@ -1155,9 +1176,8 @@ def print_summary(parts: list[PricedPart], summary: BomSummary) -> None:
     The summary intentionally complements the machine-readable output file by
     surfacing resolver quality, missing-price cases, cost hotspots, quantity
     hotspots, manufacturer distribution, and package coverage in a single view.
+    Uses Rich Tables and Panels for structured, colour-coded terminal output.
     """
-    sep = "=" * 60
-
     methods = Counter(_match_result_label(p) for p in parts)
     lookup_failures = [p for p in parts if p.match_method is None and p.lookup_error]
     not_found = [p for p in parts if p.match_method == MatchMethod.NOT_FOUND]
@@ -1176,61 +1196,89 @@ def print_summary(parts: list[PricedPart], summary: BomSummary) -> None:
     by_qty = sorted(parts, key=lambda p: p.total_quantity, reverse=True)
     overbuy_parts = [p for p in by_cost if p.has_surplus_purchase]
 
-    print(sep)
-    print("  eBOM SUMMARY")
-    print(sep)
-    print()
+    # --- Header ---
+    console.print(Rule("[heading]eBOM SUMMARY[/heading]", style="dim"))
+    console.print()
 
-    print(f"  Units to build:        {summary.units:>10,}")
-    print(f"  Unique part numbers:   {summary.total_parts:>10,}")
-    print(f"  Components per unit:   {summary.total_components_per_unit:>10,}")
-    print(f"  Total components:      {summary.total_components_per_unit * summary.units:>10,}")
-    print()
-
+    # --- Key metrics ---
     cur = summary.currency
-    print(f"  BOM cost per unit:     {summary.cost_per_unit:>10,.2f} {cur}")
-    print()
+    metrics = Table(show_header=False, box=None, padding=(0, 2))
+    metrics.add_column("label", style="dim")
+    metrics.add_column("value", justify="right", style="heading")
+    metrics.add_row("Units to build", f"{summary.units:>10,}")
+    metrics.add_row("Unique part numbers", f"{summary.total_parts:>10,}")
+    metrics.add_row("Components per unit", f"{summary.total_components_per_unit:>10,}")
+    metrics.add_row("Total components", f"{summary.total_components_per_unit * summary.units:>10,}")
+    metrics.add_row("", "")
+    metrics.add_row("BOM cost per unit", f"{summary.cost_per_unit:>10,.2f} {cur}")
+    console.print(metrics)
+    console.print()
 
-    print("  Match results:")
+    # --- Match results ---
+    match_table = Table(title="Match results", border_style="dim", padding=(0, 1))
+    match_table.add_column("Method", style="dim")
+    match_table.add_column("Count", justify="right")
     for label, count in methods.most_common():
-        print(f"    {label:30s} {count:>4}")
-    print()
+        style = "review" if "review" in label.lower() else ("error" if "fail" in label.lower() or "not found" in label.lower() else "")
+        match_table.add_row(label, f"{count:,}", style=style)
+    console.print(match_table)
+    console.print()
 
+    # --- Problems: not found, failures, no price ---
     if not_found:
-        print(f"  Parts not found ({len(not_found)}):")
+        nf_table = Table(title=f"Parts not found ({len(not_found)})", border_style="dim", padding=(0, 1))
+        nf_table.add_column("Part Number", style="part")
+        nf_table.add_column("Manufacturer")
         for p in not_found:
-            print(f"    {p.part_number:30s} {p.manufacturer}")
-        print()
+            nf_table.add_row(p.part_number, p.manufacturer)
+        console.print(nf_table)
+        console.print()
 
     if lookup_failures:
-        print(f"  Lookup failures ({len(lookup_failures)}):")
+        lf_table = Table(title=f"Lookup failures ({len(lookup_failures)})", border_style="dim", padding=(0, 1))
+        lf_table.add_column("Part Number", style="part")
+        lf_table.add_column("Detail", style="error")
         for p in lookup_failures:
             detail = (p.lookup_error or "").splitlines()[0][:90]
-            print(f"    {p.part_number:30s} → {detail}")
-        print()
+            lf_table.add_row(p.part_number, detail)
+        console.print(lf_table)
+        console.print()
 
     if no_price:
-        print(f"  Matched but no price ({len(no_price)}):")
+        np_table = Table(title=f"Matched but no price ({len(no_price)})", border_style="dim", padding=(0, 1))
+        np_table.add_column("Part Number", style="part")
+        np_table.add_column("Distributor PN")
         for p in no_price:
-            print(f"    {p.part_number:30s} → {p.distributor_part_number or '—'}")
-        print()
+            np_table.add_row(p.part_number, p.distributor_part_number or "—")
+        console.print(np_table)
+        console.print()
 
+    # --- Top 10 by per-unit cost ---
     if by_cost:
-        print("  Top 10 by per-unit cost:")
-        print(f"    {'Part Number':30s} {'Qty/Unit':>8s} {'Part Price':>12s} {'Per Unit':>12s}")
-        print(f"    {'-' * 30} {'-' * 8} {'-' * 12} {'-' * 12}")
+        cost_table = Table(title="Top 10 by per-unit cost", border_style="dim", padding=(0, 1))
+        cost_table.add_column("Part Number", style="part")
+        cost_table.add_column("Qty/Unit", justify="right")
+        cost_table.add_column("Part Price", justify="right", style="price")
+        cost_table.add_column("Per Unit", justify="right", style="price")
         for p in by_cost[:10]:
             per_unit_cost = _line_cost_per_unit(p, summary.units) or 0.0
-            print(
-                f"    {p.part_number:30s} {p.quantity_per_unit:>8,} "
-                f"{(p.unit_price or 0.0):>12.4f} {per_unit_cost:>12.4f}"
+            cost_table.add_row(
+                p.part_number,
+                f"{p.quantity_per_unit:,}",
+                f"{(p.unit_price or 0.0):.4f}",
+                f"{per_unit_cost:.4f}",
             )
-        print()
+        console.print(cost_table)
+        console.print()
 
+    # --- Overbuy selections ---
     if overbuy_parts:
-        print("  Overbuy selections:")
-        print(f"    {'Part Number':30s} {'Need':>8s} {'Buy':>8s} {'Spare':>8s} {'Strategy':18s}")
-        print(f"    {'-' * 30} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 18}")
+        ob_table = Table(title="Overbuy selections", border_style="dim", padding=(0, 1))
+        ob_table.add_column("Part Number", style="part")
+        ob_table.add_column("Need", justify="right")
+        ob_table.add_column("Buy", justify="right")
+        ob_table.add_column("Spare", justify="right", style="review")
+        ob_table.add_column("Strategy")
         for p in overbuy_parts[:10]:
             strategy = ", ".join(
                 item
@@ -1242,43 +1290,67 @@ def print_summary(parts: list[PricedPart], summary: BomSummary) -> None:
                 ]
                 if item
             ) or "—"
-            print(
-                f"    {p.part_number:30s} "
-                f"{(p.required_quantity or 0):>8,} "
-                f"{(p.purchased_quantity or 0):>8,} "
-                f"{(p.surplus_quantity or 0):>8,} "
-                f"{strategy[:18]:18}"
+            ob_table.add_row(
+                p.part_number,
+                f"{(p.required_quantity or 0):,}",
+                f"{(p.purchased_quantity or 0):,}",
+                f"{(p.surplus_quantity or 0):,}",
+                strategy,
             )
-        print()
+        console.print(ob_table)
+        console.print()
 
-    print("  Top 10 by total quantity:")
-    print(f"    {'Part Number':30s} {'Qty/Unit':>8s} {'Total Qty':>10s}")
-    print(f"    {'-' * 30} {'-' * 8} {'-' * 10}")
+    # --- Top 10 by total quantity ---
+    qty_table = Table(title="Top 10 by total quantity", border_style="dim", padding=(0, 1))
+    qty_table.add_column("Part Number", style="part")
+    qty_table.add_column("Qty/Unit", justify="right")
+    qty_table.add_column("Total Qty", justify="right")
     for p in by_qty[:10]:
-        print(f"    {p.part_number:30s} {p.quantity_per_unit:>8,} {p.total_quantity:>10,}")
-    print()
+        qty_table.add_row(
+            p.part_number,
+            f"{p.quantity_per_unit:,}",
+            f"{p.total_quantity:,}",
+        )
+    console.print(qty_table)
+    console.print()
 
-    print(f"  Manufacturers ({len(manufacturers)}):")
+    # --- Manufacturers ---
+    mfr_table = Table(title=f"Manufacturers ({len(manufacturers)})", border_style="dim", padding=(0, 1))
+    mfr_table.add_column("Manufacturer")
+    mfr_table.add_column("Parts", justify="right")
     for mfr, count in manufacturers.most_common():
-        print(f"    {mfr:30s} {count:>4} part(s)")
-    print()
+        mfr_table.add_row(mfr, f"{count:,}")
+    console.print(mfr_table)
+    console.print()
 
+    # --- Selected distributors ---
     if distributors:
-        print(f"  Selected distributors ({len(distributors)}):")
+        dist_table = Table(title=f"Selected distributors ({len(distributors)})", border_style="dim", padding=(0, 1))
+        dist_table.add_column("Distributor")
+        dist_table.add_column("Parts", justify="right")
         for distributor, count in distributors.most_common():
-            print(f"    {distributor:30s} {count:>4} part(s)")
-        print()
+            dist_table.add_row(distributor, f"{count:,}")
+        console.print(dist_table)
+        console.print()
 
+    # --- Packages ---
     with_pkg = [p for p in parts if p.package]
     if with_pkg:
         packages = Counter(p.package for p in with_pkg)
         without_pkg = summary.total_parts - len(with_pkg)
-        print(f"  Packages ({len(with_pkg)} identified, {without_pkg} unknown):")
+        pkg_table = Table(
+            title=f"Packages ({len(with_pkg)} identified, {without_pkg} unknown)",
+            border_style="dim",
+            padding=(0, 1),
+        )
+        pkg_table.add_column("Package")
+        pkg_table.add_column("Parts", justify="right")
         for pkg, count in packages.most_common():
-            print(f"    {pkg:30s} {count:>4} part(s)")
-        print()
+            pkg_table.add_row(pkg, f"{count:,}")
+        console.print(pkg_table)
+        console.print()
 
-    print(sep)
+    console.print(Rule(style="dim"))
 
 
 def _match_result_label(part: PricedPart) -> str:
@@ -1315,7 +1387,7 @@ def run(args: argparse.Namespace) -> int:
         setup_logging(args.verbose)
 
         if trace_path is not None:
-            print(f"Trace transcript: {trace_path}")
+            console.print(f"Trace transcript: {trace_path}")
 
         flush_requested = bool(getattr(args, "flush", False))
         flush_resolutions_requested = bool(getattr(args, "flush_resolutions", False))
@@ -1339,19 +1411,20 @@ def run(args: argparse.Namespace) -> int:
 
         designs = build_input_designs(args)
 
-        print(f"\nAggregating for {args.units} units (attrition: {args.attrition:.1%})...")
+        console.print(f"\nAggregating for [heading]{args.units:,}[/heading] units (attrition: {args.attrition:.1%})...")
         aggregated = aggregate_parts(designs, args.units, args.attrition)
-        print(f"  {len(aggregated)} unique parts")
+        console.print(f"  [heading]{len(aggregated)}[/heading] unique parts")
 
         priced = price_parts(aggregated, args, run_started_at=run_started_at)
         summary = BomSummary.from_parts(priced, args.units)
 
-        print()
+        console.print()
         write_report(priced, fmt, output, summary)
 
-        print()
+        console.print()
         print_summary(priced, summary)
-        print(f"\nCompleted in {_format_elapsed_clock(time.perf_counter() - run_started_at)}")
+        elapsed = _format_elapsed_clock(time.perf_counter() - run_started_at)
+        console.print(f"\n[dim]Completed in {elapsed}[/dim]")
         return 0
 
 

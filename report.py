@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 from typing import Any, Callable
 
+from console import console, Panel
 from manufacturer_packaging import packaging_kind_from_text
 from models import BomSummary, PricedPart
 
@@ -255,10 +256,14 @@ def _summary_rows(summary: BomSummary) -> list[list[str]]:
 
 def _print_write_status(output: Path, summary: BomSummary) -> None:
     """Print the common post-write status message shown by all writers."""
-    print(f"BOM written to {output}")
-    print(f"  {summary.total_parts} unique parts, BOM cost / unit: {summary.cost_per_unit:.2f}")
+    cur = summary.currency or ""
+    lines = [
+        f"BOM written to [heading]{output}[/heading]",
+        f"  {summary.total_parts} unique parts, BOM cost / unit: [price]{summary.cost_per_unit:.2f} {cur}[/price]",
+    ]
     if summary.error_count:
-        print(f"  {summary.error_count} part(s) had lookup errors")
+        lines.append(f"  [review]{summary.error_count} part(s) had lookup errors[/review]")
+    console.print("\n".join(lines))
 
 
 def write_csv(
@@ -302,8 +307,8 @@ def write_excel(
         from openpyxl.styles import Font, PatternFill
         from openpyxl.worksheet.table import Table, TableStyleInfo
     except ImportError:
-        print("openpyxl not installed. Install with: pip install openpyxl")
-        print("Falling back to CSV output.")
+        console.print("[review]openpyxl not installed. Install with: pip install openpyxl[/review]")
+        console.print("Falling back to CSV output.")
         write_csv(parts, output.with_suffix(".csv"), summary)
         return
 
