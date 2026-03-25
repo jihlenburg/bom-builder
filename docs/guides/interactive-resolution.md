@@ -1,20 +1,24 @@
 # Interactive Resolution
 
-`bom-builder` can stop on genuinely ambiguous parts and let you choose the correct candidate from the terminal.
+BOM Builder can pause on genuinely ambiguous parts and let you choose the
+correct candidate from the terminal.
 
 ## Usage
 
 ```bash
-python main.py -d LUPA_48VGen_BOM.json -u 1000 --interactive
+python main.py -d designs/board.json -u 1000 --interactive
 ```
 
-Or enable the AI reranker first and fall back to interactive review only if the model abstains:
+Or enable the AI reranker first and fall back to interactive review only when
+the model abstains:
 
 ```bash
-python main.py -d LUPA_48VGen_BOM.json -u 1000 --ai-resolve --interactive
+python main.py -d designs/board.json -u 1000 --ai-resolve --interactive
 ```
 
-The interactive resolver only prompts when the preceding stages still require review. Confident exact, begins-with, fuzzy-resolved, saved, and AI-reranked matches continue automatically.
+The interactive resolver only prompts when the preceding stages still require
+review. Confident exact, begins-with, fuzzy-resolved, saved, and AI-reranked
+matches continue automatically.
 
 ## Terminal Commands
 
@@ -36,7 +40,8 @@ Available commands:
 
 ## Saved Resolutions
 
-When you select a candidate, the choice is saved and reused automatically on future runs.
+When you select a candidate, the choice is saved and reused automatically on
+future runs.
 
 Default path:
 
@@ -50,14 +55,21 @@ Override with:
 export BOM_BUILDER_RESOLUTIONS_FILE=/path/to/resolutions.json
 ```
 
-## Resolver Order
+To clear all saved selections:
 
-The resolver now runs in this order:
+```bash
+python main.py --flush-resolutions
+```
 
-1. deterministic Mouser lookup
-2. manufacturer/package enrichment
-3. saved manual resolution reuse
-4. optional OpenAI reranking when `--ai-resolve` is enabled
-5. interactive selection when `--interactive` is enabled
+## Resolver Pipeline
 
-The AI stage only reranks candidates that already came from deterministic search. It does not invent new part numbers.
+Each BOM line passes through these stages in order. A line exits the pipeline
+as soon as a stage resolves it with confidence.
+
+1. **Saved resolution reuse** -- previously saved manual or AI-confirmed selections
+2. **Deterministic Mouser lookup** -- exact, begins-with, and fuzzy multi-pass search
+3. **Manufacturer/package enrichment** -- product-page and manufacturer-page packaging details
+4. **AI reranking** -- optional OpenAI reranker when `--ai-resolve` is enabled; abstains on underspecified input
+5. **Interactive selection** -- terminal chooser when `--interactive` is enabled
+6. **Cross-distributor pricing** -- Digi-Key, TI Store, and NXP direct are queried for resolved parts
+7. **Offer selection** -- cheapest confident offer wins after surplus and packaging-plan comparison

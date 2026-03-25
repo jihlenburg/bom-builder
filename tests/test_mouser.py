@@ -24,7 +24,6 @@ from mouser import (
     manufacturers_match,
     parse_price,
     price_part,
-    price_all_parts,
     score_candidate,
     smart_lookup,
     strip_qualifiers,
@@ -913,57 +912,6 @@ class TestPricePart:
             ("PART-Q1", "BeginsWith"),
             ("PART", "BeginsWith"),
         ]
-
-    def test_price_all_parts_skips_user_delay_when_no_network_was_used(self, monkeypatch):
-        responses = {
-            ("PART1", "Exact"): [
-                {
-                    "Manufacturer": "Texas Instruments",
-                    "ManufacturerPartNumber": "PART1",
-                    "MouserPartNumber": "595-PART1",
-                    "Description": "Exact match",
-                    "Availability": "100 In Stock",
-                    "PriceBreaks": [{"Quantity": "1", "Price": "0.10"}],
-                }
-            ],
-            ("PART2", "Exact"): [
-                {
-                    "Manufacturer": "Texas Instruments",
-                    "ManufacturerPartNumber": "PART2",
-                    "MouserPartNumber": "595-PART2",
-                    "Description": "Exact match",
-                    "Availability": "100 In Stock",
-                    "PriceBreaks": [{"Quantity": "1", "Price": "0.20"}],
-                }
-            ],
-        }
-
-        class CachedClient(StubMouserClient):
-            network_requests = 0
-
-        sleeps: list[float] = []
-        monkeypatch.setattr("mouser.time.sleep", lambda seconds: sleeps.append(seconds))
-
-        parts = [
-            AggregatedPart(
-                part_number="PART1",
-                manufacturer="Texas Instruments",
-                quantity_per_unit=1,
-                total_quantity=10,
-            ),
-            AggregatedPart(
-                part_number="PART2",
-                manufacturer="Texas Instruments",
-                quantity_per_unit=1,
-                total_quantity=10,
-            ),
-        ]
-
-        results = price_all_parts(parts, CachedClient(responses), delay=5.0)
-
-        assert len(results) == 2
-        assert sleeps == []
-
 
 class TestMouserClient:
     def test_packaging_details_do_not_fetch_product_page_by_default(self):

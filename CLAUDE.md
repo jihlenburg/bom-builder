@@ -104,7 +104,7 @@ Every substantial change should follow this full cycle:
 ### Architecture Rules
 
 - Configuration data (manufacturer aliases, package mappings) belongs in YAML files, not hardcoded in Python.
-- API interaction logic stays in `mouser.py`. Do not scatter HTTP calls across modules.
+- Mouser integration is split across three modules: `mouser.py` (API client, multi-pass lookup pipeline, pricing), `mouser_scoring.py` (candidate matching, scoring, qualification rules), and `mouser_packaging.py` (packaging detail extraction from search payloads and product pages). Do not scatter HTTP calls outside these Mouser modules.
 - Data models stay in `models.py`. All model-to-model conversions use class methods.
 - Report/output logic stays in `report.py`. Summary stats come from `BomSummary`.
 - CLI argument parsing and orchestration stays in `main.py`.

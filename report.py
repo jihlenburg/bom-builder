@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 from typing import Any, Callable
 
+from manufacturer_packaging import packaging_kind_from_text
 from models import BomSummary, PricedPart
 
 @dataclass(frozen=True)
@@ -47,17 +48,12 @@ def _single_purchase_leg(part: PricedPart):
 
 
 def _batch_kind_from_text(packaging_text: str) -> str | None:
-    """Infer the packaging noun to use in batch-plan formatting."""
-    normalized = packaging_text.lower()
-    if "reel" in normalized and "cut tape" not in normalized and "mousereel" not in normalized:
-        return "reel"
-    if "tray" in normalized:
-        return "tray"
-    if "tube" in normalized:
-        return "tube"
-    if normalized:
-        return "batch"
-    return None
+    """Infer the packaging noun to use in batch-plan formatting.
+
+    Delegates to :func:`manufacturer_packaging.packaging_kind_from_text` for
+    the actual keyword matching logic.
+    """
+    return packaging_kind_from_text(packaging_text)
 
 
 def _order_batch_details(part: PricedPart) -> tuple[int | None, str | None]:

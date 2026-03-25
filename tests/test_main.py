@@ -179,7 +179,7 @@ class TestParseArgs:
 
         assert terms == ["TCAN1472VDRQ1"]
 
-    def test_ti_query_terms_use_bom_part_number_first_with_confirmed_mpn_fallback(self):
+    def test_manufacturer_direct_query_terms_use_bom_part_number_first_with_confirmed_mpn_fallback(self):
         agg = AggregatedPart(
             part_number="TPS61041-Q1",
             manufacturer="Texas Instruments",
@@ -196,11 +196,11 @@ class TestParseArgs:
             review_required=False,
         )
 
-        terms = main._ti_query_terms(agg, priced)
+        terms = main._manufacturer_direct_query_terms(agg, priced)
 
         assert terms == ["TPS61041-Q1", "TPS61041QDBVRQ1"]
 
-    def test_ti_query_terms_use_bom_part_number_without_confirmed_mpn(self):
+    def test_manufacturer_direct_query_terms_use_bom_part_number_without_confirmed_mpn(self):
         agg = AggregatedPart(
             part_number="TPS61041-Q1",
             manufacturer="Texas Instruments",
@@ -216,11 +216,11 @@ class TestParseArgs:
             review_required=False,
         )
 
-        terms = main._ti_query_terms(agg, priced)
+        terms = main._manufacturer_direct_query_terms(agg, priced)
 
         assert terms == ["TPS61041-Q1"]
 
-    def test_ti_query_terms_include_review_candidate_as_manufacturer_fallback(self):
+    def test_manufacturer_direct_query_terms_include_review_candidate_as_manufacturer_fallback(self):
         agg = AggregatedPart(
             part_number="TLIN4029A-Q1",
             manufacturer="Texas Instruments",
@@ -237,7 +237,7 @@ class TestParseArgs:
             review_required=True,
         )
 
-        terms = main._ti_query_terms(agg, priced)
+        terms = main._manufacturer_direct_query_terms(agg, priced)
 
         assert terms == ["TLIN4029A-Q1", "TLIN4029ADRQ1"]
 

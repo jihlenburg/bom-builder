@@ -40,4 +40,5 @@ Active tasks should be recorded here while work is in progress and checked off o
 - [x] Expand the persistent cache to Digi-Key and TI responses, and scope `--mouser-delay` back to live Mouser traffic
 - [x] Add fail-closed NXP direct pricing and surplus-aware cross-supplier supplier scoring
 - [x] Introduce explicit project versioning and cut the `1.0.0.0` release baseline
+- [x] Refactor the codebase: split mouser.py, deduplicate utilities, remove dead code, flatten context managers
 - [ ] Tighten deterministic Mouser resolution and ambiguity handling

@@ -14,7 +14,7 @@ messages.
 """
 
 import argparse
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from datetime import datetime
 import os
 import shlex
@@ -464,64 +464,54 @@ def price_parts(
     if run_started_at is None:
         run_started_at = time.perf_counter()
 
+    cache_kw = dict(cache_enabled=not args.no_cache,
+                     cache_ttl_seconds=int(args.cache_ttl_hours * 3600))
+
     print("\nLooking up distributor prices...")
-    with MouserClient(
-        api_key=args.mouser_api_key,
-        cache_enabled=not args.no_cache,
-        cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
-    ) as mouser_client:
+    with ExitStack() as stack:
+        mouser_client = stack.enter_context(MouserClient(
+            api_key=args.mouser_api_key, **cache_kw,
+        ))
         resolution_store = ResolutionStore()
-        ai_context = (
-            OpenAIResolver(
+        ai_resolver = (
+            stack.enter_context(OpenAIResolver(
                 model=args.ai_model,
                 confidence_threshold=args.ai_confidence_threshold,
-            )
+            ))
             if args.ai_resolve
-            else nullcontext(None)
+            else None
         )
-        with ai_context as ai_resolver:
-            digikey_context = (
-                DigiKeyClient(
-                    cache_enabled=not args.no_cache,
-                    cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
-                )
-                if digikey_is_configured()
-                else nullcontext(None)
-            )
-            with digikey_context as digikey_client:
-                ti_context = (
-                    TIClient(
-                        cache_enabled=not args.no_cache,
-                        cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
-                    )
-                    if ti_is_configured()
-                    else nullcontext(None)
-                )
-                with ti_context as ti_client:
-                    nxp_context = (
-                        NXPClient(
-                            cache_enabled=not args.no_cache,
-                            cache_ttl_seconds=int(args.cache_ttl_hours * 3600),
-                        )
-                        if nxp_is_available()
-                        else nullcontext(None)
-                    )
-                    with nxp_context as nxp_client:
-                        with FXRateProvider() as fx_rate_provider:
-                            return _price_parts_across_distributors(
-                                aggregated,
-                                mouser_client,
-                                digikey_client=digikey_client,
-                                ti_client=ti_client,
-                                nxp_client=nxp_client,
-                                fx_rate_provider=fx_rate_provider,
-                                comparison_currency=resolve_target_currency(),
-                                delay=args.mouser_delay,
-                                run_started_at=run_started_at,
-                                interactive=args.interactive,
-                                resolution_store=resolution_store,
-                                ai_resolver=ai_resolver,
-                            )
+        digikey_client = (
+            stack.enter_context(DigiKeyClient(**cache_kw))
+            if digikey_is_configured()
+            else None
+        )
+        ti_client = (
+            stack.enter_context(TIClient(**cache_kw))
+            if ti_is_configured()
+            else None
+        )
+        nxp_client = (
+            stack.enter_context(NXPClient(**cache_kw))
+            if nxp_is_available()
+            else None
+        )
+        fx_rate_provider = stack.enter_context(FXRateProvider())
+
+        return _price_parts_across_distributors(
+            aggregated,
+            mouser_client,
+            digikey_client=digikey_client,
+            ti_client=ti_client,
+            nxp_client=nxp_client,
+            fx_rate_provider=fx_rate_provider,
+            comparison_currency=resolve_target_currency(),
+            delay=args.mouser_delay,
+            run_started_at=run_started_at,
+            interactive=args.interactive,
+            resolution_store=resolution_store,
+            ai_resolver=ai_resolver,
+        )
 
 
 def _price_parts_across_distributors(
@@ -638,11 +628,6 @@ def _digikey_query_terms(agg: AggregatedPart, priced: PricedPart) -> list[str]:
     if _has_confirmed_manufacturer_part_number(priced):
         return [priced.manufacturer_part_number]
     return [agg.part_number] if agg.part_number else []
-
-
-def _ti_query_terms(agg: AggregatedPart, priced: PricedPart) -> list[str]:
-    """Return the ordered TI lookup terms for one BOM line."""
-    return _manufacturer_direct_query_terms(agg, priced)
 
 
 def _manufacturer_direct_query_terms(

@@ -20,7 +20,7 @@
   "search_packaging_details": {
     "full_reel_price_breaks": [],
     "full_reel_quantity": null,
-    "minimum_order_quantity": 0,
+    "minimum_order_quantity": null,
     "order_multiple": null,
     "packaging_mode": null,
     "packaging_source": null,

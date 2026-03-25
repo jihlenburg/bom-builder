@@ -253,6 +253,35 @@ class PricedPart(BaseModel):
         purchased = self.purchased_quantity or 0
         return required > 0 and purchased > required
 
+    # Fields copied verbatim from a DistributorOffer by apply_selected_offer.
+    # Kept as a class-level tuple so that adding a new offer field forces an
+    # explicit decision about whether it should be auto-copied.
+    _OFFER_COPY_FIELDS: tuple[str, ...] = (
+        "distributor",
+        "distributor_part_number",
+        "manufacturer_part_number",
+        "unit_price",
+        "extended_price",
+        "currency",
+        "availability",
+        "price_break_quantity",
+        "purchased_quantity",
+        "surplus_quantity",
+        "package_type",
+        "packaging_mode",
+        "packaging_source",
+        "minimum_order_quantity",
+        "order_multiple",
+        "full_reel_quantity",
+        "pricing_strategy",
+        "order_plan",
+        "match_method",
+        "match_candidates",
+        "resolution_source",
+        "review_required",
+        "lookup_error",
+    )
+
     def apply_selected_offer(self, offer: DistributorOffer) -> None:
         """Copy one normalized distributor offer into the selected top level.
 
@@ -262,30 +291,11 @@ class PricedPart(BaseModel):
             The offer that should drive summary totals, report columns, and the
             selected distributor metadata shown to the user.
         """
-        self.distributor = offer.distributor
-        self.distributor_part_number = offer.distributor_part_number
-        self.manufacturer_part_number = offer.manufacturer_part_number
-        self.unit_price = offer.unit_price
-        self.extended_price = offer.extended_price
-        self.currency = offer.currency
-        self.availability = offer.availability
-        self.price_break_quantity = offer.price_break_quantity
+        for field in self._OFFER_COPY_FIELDS:
+            setattr(self, field, getattr(offer, field))
+
+        # Special cases that need fallback logic or deep copies:
         self.required_quantity = offer.required_quantity or self.required_quantity or self.total_quantity
-        self.purchased_quantity = offer.purchased_quantity
-        self.surplus_quantity = offer.surplus_quantity
-        self.package_type = offer.package_type
-        self.packaging_mode = offer.packaging_mode
-        self.packaging_source = offer.packaging_source
-        self.minimum_order_quantity = offer.minimum_order_quantity
-        self.order_multiple = offer.order_multiple
-        self.full_reel_quantity = offer.full_reel_quantity
-        self.pricing_strategy = offer.pricing_strategy
-        self.order_plan = offer.order_plan
-        self.match_method = offer.match_method
-        self.match_candidates = offer.match_candidates
-        self.resolution_source = offer.resolution_source
-        self.review_required = offer.review_required
-        self.lookup_error = offer.lookup_error
         self.purchase_legs = [leg.model_copy(deep=True) for leg in offer.purchase_legs]
         self.mouser_part_number = (
             offer.distributor_part_number if offer.distributor.lower() == "mouser" else None

@@ -13,6 +13,7 @@ from math import ceil
 import os
 from typing import Iterable
 
+from manufacturer_packaging import packaging_kind_from_text
 from models import PurchaseLeg
 
 
@@ -70,15 +71,12 @@ def _round_up_to_multiple(quantity: int, multiple: int | None) -> int:
 
 
 def _batch_noun(leg: PurchaseLeg) -> str:
-    """Return the preferred noun for one purchase leg's packaging."""
-    packaging_text = _packaging_text(leg).lower()
-    if "reel" in packaging_text and "cut tape" not in packaging_text and "mousereel" not in packaging_text:
-        return "reel"
-    if "tray" in packaging_text:
-        return "tray"
-    if "tube" in packaging_text:
-        return "tube"
-    return "batch"
+    """Return the preferred noun for one purchase leg's packaging.
+
+    Delegates keyword matching to
+    :func:`manufacturer_packaging.packaging_kind_from_text`.
+    """
+    return packaging_kind_from_text(_packaging_text(leg)) or "batch"
 
 
 def _packaging_text(leg: PurchaseLeg) -> str:

@@ -103,6 +103,27 @@ def is_probably_blocked_page_html(html: str) -> bool:
     )
 
 
+def packaging_kind_from_text(packaging_text: str) -> str | None:
+    """Infer a packaging noun (reel, tray, tube, batch) from free-form text.
+
+    Returns ``None`` when the input is empty or contains no recognizable
+    packaging keyword.  The function is intentionally conservative: it only
+    returns ``"reel"`` when the text mentions a reel *without* also mentioning
+    ``"cut tape"`` or ``"mousereel"`` — both of which indicate cut-tape
+    variants that should not be classified as full-reel packaging.
+    """
+    normalized = packaging_text.lower()
+    if "reel" in normalized and "cut tape" not in normalized and "mousereel" not in normalized:
+        return "reel"
+    if "tray" in normalized:
+        return "tray"
+    if "tube" in normalized:
+        return "tube"
+    if normalized:
+        return "batch"
+    return None
+
+
 def manufacturer_page_url(
     manufacturer: str,
     *,
