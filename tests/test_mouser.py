@@ -201,6 +201,22 @@ class TestScoreCandidate:
         s_std = score_candidate(c_std, "PART", "Texas Instruments")
         assert s_std > s_auto
 
+    def test_ti_q1_hard_gate_disqualifies_non_q1(self):
+        """TI non-Q1 candidates are disqualified when BOM specifies Q1."""
+        c_std = self._candidate(mpn="LM2775DSGT", desc="Boost Regulator")
+        assert score_candidate(c_std, "LM2775-Q1", "Texas Instruments") == -1
+        assert score_candidate(c_std, "LM2775-Q1", "TI") == -1
+
+    def test_ti_q1_hard_gate_keeps_q1_candidate(self):
+        """TI Q1 candidates pass the hard gate when BOM specifies Q1."""
+        c_q1 = self._candidate(mpn="LM2775QDSGRQ1", desc="AEC-Q100 Automotive")
+        assert score_candidate(c_q1, "LM2775-Q1", "Texas Instruments") > 0
+
+    def test_ti_q1_hard_gate_not_applied_to_other_manufacturers(self):
+        """The Q1 hard gate is TI-specific — other manufacturers are unaffected."""
+        c_std = self._candidate(mpn="PARTXYZ", mfr="STMicroelectronics", desc="Standard part")
+        assert score_candidate(c_std, "PART-Q1", "STMicroelectronics") != -1
+
 
 class TestBestPriceBreak:
     def test_picks_highest_applicable(self):

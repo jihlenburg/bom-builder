@@ -15,6 +15,7 @@ messages.
 
 import argparse
 from contextlib import ExitStack, nullcontext
+from dataclasses import dataclass, field
 from datetime import datetime
 import os
 import shlex
@@ -46,7 +47,7 @@ from models import (
     Part,
     PricedPart,
 )
-from mouser import MouserClient, price_part as price_mouser_part
+from mouser import LookupResult, MouserClient, price_part as price_mouser_part
 from nxp import NXPClient, nxp_is_available, nxp_supports_manufacturer, price_part_via_nxp
 from report import write_csv, write_excel, write_json
 from resolution_store import ResolutionStore, default_resolution_store_path
@@ -515,6 +516,160 @@ def price_parts(
         )
 
 
+@dataclass
+class SinglePartResult:
+    """Result of pricing one BOM line across all configured distributors.
+
+    Bundles the :class:`PricedPart` together with timing telemetry and
+    runtime notices so that both the CLI loop and the TUI worker can consume
+    the same pricing function without duplicating post-processing logic.
+    """
+
+    priced: PricedPart
+    source_timings: list[tuple[str, float]] = field(default_factory=list)
+    runtime_notices: list[str] = field(default_factory=list)
+    used_live_mouser: bool = False
+    duration: float = 0.0
+
+
+ResolverCallback = Callable[
+    [AggregatedPart, LookupResult, ResolutionStore | None, MouserClient],
+    LookupResult,
+]
+"""Type alias for the resolver callback used by both CLI and TUI.
+
+The callback receives the aggregated part, the current lookup result, the
+optional resolution store, and the Mouser client. It must return an updated
+:class:`LookupResult` reflecting the user's decision.
+"""
+
+
+def _price_single_part(
+    agg: AggregatedPart,
+    mouser_client: MouserClient,
+    *,
+    digikey_client: DigiKeyClient | None,
+    ti_client: TIClient | None,
+    nxp_client: NXPClient | None,
+    fx_rate_provider: FXRateProvider,
+    comparison_currency: str,
+    interactive: bool,
+    resolution_store: ResolutionStore,
+    ai_resolver: OpenAIResolver | None,
+    resolver_callback: ResolverCallback | None = None,
+) -> SinglePartResult:
+    """Price one aggregated BOM line across all configured distributors.
+
+    This is the shared workhorse called by both the sequential CLI loop
+    and the TUI worker thread. It performs the full Mouser lookup, optional
+    Digi-Key / TI / NXP sourcing, currency conversion, and best-offer
+    selection for a single part.
+
+    Parameters
+    ----------
+    agg:
+        The aggregated BOM line to price.
+    mouser_client:
+        Active Mouser API client.
+    digikey_client:
+        Optional Digi-Key client for cross-distributor sourcing.
+    ti_client:
+        Optional TI client for manufacturer-direct sourcing.
+    nxp_client:
+        Optional NXP client for manufacturer-direct sourcing.
+    fx_rate_provider:
+        Currency conversion provider.
+    comparison_currency:
+        Target currency for offer comparison.
+    interactive:
+        Whether to invoke the text-based interactive resolver.
+    resolution_store:
+        Persistent store for saved manual resolutions.
+    ai_resolver:
+        Optional AI reranker.
+    resolver_callback:
+        When provided, replaces the built-in interactive resolver with a
+        custom handler (used by the TUI modal).
+
+    Returns
+    -------
+    SinglePartResult
+        The priced part bundled with timing and notice metadata.
+    """
+    lookup_started_at = time.perf_counter()
+    source_timings: list[tuple[str, float]] = []
+    runtime_notices: list[str] = []
+    before_mouser_requests = _mouser_request_count(mouser_client)
+
+    mouser_started_at = time.perf_counter()
+    priced = price_mouser_part(
+        agg,
+        mouser_client,
+        interactive=interactive,
+        resolution_store=resolution_store,
+        ai_resolver=ai_resolver,
+        resolver_callback=resolver_callback,
+    )
+    source_timings.append(("mouser", time.perf_counter() - mouser_started_at))
+
+    if digikey_client is not None:
+        digikey_terms = _digikey_query_terms(agg, priced)
+        digikey_started_at = time.perf_counter()
+        priced.offers.append(
+            price_part_via_digikey(
+                agg,
+                digikey_client,
+                query_terms=digikey_terms,
+            )
+        )
+        source_timings.append(("digikey", time.perf_counter() - digikey_started_at))
+
+    ti_terms = _manufacturer_direct_query_terms(agg, priced)
+    if ti_client is not None and ti_supports_manufacturer(agg.manufacturer) and ti_terms:
+        ti_started_at = time.perf_counter()
+        priced.offers.append(
+            price_part_via_ti(
+                agg,
+                ti_client,
+                query_terms=ti_terms,
+            )
+        )
+        source_timings.append(("ti", time.perf_counter() - ti_started_at))
+
+    nxp_terms = _manufacturer_direct_query_terms(agg, priced)
+    if nxp_client is not None and nxp_supports_manufacturer(agg.manufacturer) and nxp_terms:
+        nxp_started_at = time.perf_counter()
+        priced.offers.append(
+            price_part_via_nxp(
+                agg,
+                nxp_client,
+                query_terms=nxp_terms,
+            )
+        )
+        source_timings.append(("nxp", time.perf_counter() - nxp_started_at))
+        runtime_notices.extend(nxp_client.consume_runtime_notices())
+
+    priced.offers = convert_offers_currency(
+        priced.offers,
+        comparison_currency,
+        fx_rate_provider,
+    )
+    selected_offer = _select_preferred_offer(priced.offers)
+    if selected_offer is not None:
+        priced.apply_selected_offer(selected_offer)
+
+    used_live_mouser = (
+        _mouser_request_count(mouser_client) > before_mouser_requests
+    )
+    return SinglePartResult(
+        priced=priced,
+        source_timings=source_timings,
+        runtime_notices=runtime_notices,
+        used_live_mouser=used_live_mouser,
+        duration=time.perf_counter() - lookup_started_at,
+    )
+
+
 def _price_parts_across_distributors(
     parts: list[AggregatedPart],
     mouser_client: MouserClient,
@@ -537,10 +692,7 @@ def _price_parts_across_distributors(
         run_started_at = time.perf_counter()
 
     for i, agg in enumerate(parts, 1):
-        lookup_started_at = time.perf_counter()
-        elapsed_before_lookup = lookup_started_at - run_started_at
-        source_timings: list[tuple[str, float]] = []
-        runtime_notices: list[str] = []
+        elapsed_before_lookup = time.perf_counter() - run_started_at
         progress_line = Text()
         progress_line.append(
             f"  [{i}/{total} +{_format_elapsed_clock(elapsed_before_lookup)}] ",
@@ -550,72 +702,29 @@ def _price_parts_across_distributors(
         progress_line.append(agg.part_number, style="part")
         progress_line.append("...")
         console.print(progress_line)
-        before_mouser_requests = _mouser_request_count(mouser_client)
-        mouser_started_at = time.perf_counter()
-        priced = price_mouser_part(
+
+        result = _price_single_part(
             agg,
             mouser_client,
+            digikey_client=digikey_client,
+            ti_client=ti_client,
+            nxp_client=nxp_client,
+            fx_rate_provider=fx_rate_provider,
+            comparison_currency=comparison_currency,
             interactive=interactive,
             resolution_store=resolution_store,
             ai_resolver=ai_resolver,
         )
-        source_timings.append(("mouser", time.perf_counter() - mouser_started_at))
-        if digikey_client is not None:
-            digikey_terms = _digikey_query_terms(agg, priced)
-            digikey_started_at = time.perf_counter()
-            priced.offers.append(
-                price_part_via_digikey(
-                    agg,
-                    digikey_client,
-                    query_terms=digikey_terms,
-                )
-            )
-            source_timings.append(("digikey", time.perf_counter() - digikey_started_at))
-        ti_terms = _manufacturer_direct_query_terms(agg, priced)
-        if ti_client is not None and ti_supports_manufacturer(agg.manufacturer) and ti_terms:
-            ti_started_at = time.perf_counter()
-            priced.offers.append(
-                price_part_via_ti(
-                    agg,
-                    ti_client,
-                    query_terms=ti_terms,
-                )
-            )
-            source_timings.append(("ti", time.perf_counter() - ti_started_at))
-        nxp_terms = _manufacturer_direct_query_terms(agg, priced)
-        if nxp_client is not None and nxp_supports_manufacturer(agg.manufacturer) and nxp_terms:
-            nxp_started_at = time.perf_counter()
-            priced.offers.append(
-                price_part_via_nxp(
-                    agg,
-                    nxp_client,
-                    query_terms=nxp_terms,
-                )
-            )
-            source_timings.append(("nxp", time.perf_counter() - nxp_started_at))
-            runtime_notices.extend(nxp_client.consume_runtime_notices())
-        priced.offers = convert_offers_currency(
-            priced.offers,
-            comparison_currency,
-            fx_rate_provider,
-        )
-        selected_offer = _select_preferred_offer(priced.offers)
-        if selected_offer is not None:
-            priced.apply_selected_offer(selected_offer)
 
         _print_lookup_status(
-            priced,
-            part_duration=time.perf_counter() - lookup_started_at,
-            source_timings=source_timings,
+            result.priced,
+            part_duration=result.duration,
+            source_timings=result.source_timings,
         )
-        _print_runtime_notices(runtime_notices)
-        results.append(priced)
+        _print_runtime_notices(result.runtime_notices)
+        results.append(result.priced)
 
-        used_live_mouser = (
-            _mouser_request_count(mouser_client)
-            > before_mouser_requests
-        )
-        if i < total and delay > 0 and used_live_mouser:
+        if i < total and delay > 0 and result.used_live_mouser:
             time.sleep(delay)
 
     return results
@@ -1415,6 +1524,54 @@ def run(args: argparse.Namespace) -> int:
         aggregated = aggregate_parts(designs, args.units, args.attrition)
         console.print(f"  [heading]{len(aggregated)}[/heading] unique parts")
 
+        # --- TUI mode: launch the full-screen Textual app ---
+        if args.interactive and sys.stdin.isatty() and sys.stdout.isatty():
+            try:
+                from tui import BomBuilderApp
+            except ImportError:
+                print(
+                    "Error: textual is required for --interactive mode. "
+                    "Install with: pip install textual",
+                    file=sys.stderr,
+                )
+                return 2
+
+            tui_app = BomBuilderApp(aggregated=aggregated, args=args)
+            tui_app.run()
+            # Safety net: ensure terminal mouse tracking is disabled and
+            # any pending mouse events are flushed from the input buffer.
+            #
+            # Textual writes terminal control to sys.__stderr__ via a
+            # WriterThread.  If the worker thread was still running when
+            # Textual restored the terminal, the disable-mouse sequences
+            # may not have been sent, or the terminal may have buffered
+            # mouse events that the shell would interpret as commands.
+            #
+            # Writing directly to /dev/tty is the most reliable cross-Unix
+            # path.  On Windows the console API manages mouse tracking
+            # natively and the OSError from missing /dev/tty is harmless.
+            try:
+                import termios
+                # Disable all mouse tracking modes that Textual enables,
+                # then clear the screen so the alternate-screen content
+                # doesn't linger as a visual artifact.
+                with open("/dev/tty", "w") as tty:
+                    tty.write(
+                        "\x1b[?1000l"   # disable basic mouse tracking
+                        "\x1b[?1003l"   # disable any-event tracking
+                        "\x1b[?1015l"   # disable urxvt extended mode
+                        "\x1b[?1006l"   # disable SGR extended mode
+                        "\x1b[2J"       # clear entire screen
+                        "\x1b[H"        # move cursor to top-left
+                    )
+                # Drain any mouse events already queued in the terminal's
+                # input buffer so the shell doesn't see them as commands.
+                termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+            except (ImportError, OSError):
+                pass
+            return tui_app.return_code or 0
+
+        # --- Standard CLI mode ---
         priced = price_parts(aggregated, args, run_started_at=run_started_at)
         summary = BomSummary.from_parts(priced, args.units)
 

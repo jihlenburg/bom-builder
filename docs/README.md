@@ -9,8 +9,8 @@ reference. The root `README.md` covers quick-start setup and CLI usage.
   configuration, distributor credentials, locale settings, cache paths, and
   platform defaults.
 - [Interactive Resolution](./guides/interactive-resolution.md) -- terminal
-  chooser for ambiguous parts, saved resolutions, and the full resolver
-  pipeline order.
+  chooser and full-screen TUI for ambiguous parts, saved resolutions, the
+  resolver pipeline order, and the TUI threading architecture.
 - [Digi-Key Account Setup](./guides/digikey-account-setup.md) -- one-time
   3-legged OAuth flow to discover your Digi-Key Account ID.
 

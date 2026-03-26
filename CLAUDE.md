@@ -10,6 +10,8 @@ BOM Builder is a Python CLI tool for building and pricing electrical Bills of Ma
 - pydantic for data models and validation
 - httpx for HTTP requests (with connection pooling via `MouserClient`)
 - openpyxl for Excel output
+- rich for styled terminal output (shared console, themed markup)
+- textual for the full-screen interactive TUI (`--interactive`)
 - pyyaml for config files (manufacturers.yaml, packages.yaml)
 - python-dotenv for environment management
 - pytest for testing
@@ -108,6 +110,10 @@ Every substantial change should follow this full cycle:
 - Data models stay in `models.py`. All model-to-model conversions use class methods.
 - Report/output logic stays in `report.py`. Summary stats come from `BomSummary`.
 - CLI argument parsing and orchestration stays in `main.py`.
+- The full-screen interactive TUI lives in `tui/` and is only imported when `--interactive` is used on a TTY. The `tui/` package must never be imported at module level in `main.py` — it is a lazy import behind the TTY check.
+- The TUI worker thread communicates with the Textual event loop exclusively through `app.post_message()` (thread-safe) and `ResolverRendezvous` (Future-based). Never touch Textual widgets from the worker thread.
+- Shutdown coordination uses `app.shutdown_event` (threading.Event) for iteration boundaries and `rendezvous.cancel()` (Future.cancel) for instant wakeup of blocked resolver callbacks.
+- Terminal-facing styled output uses the shared `Console` instance from `console.py`. All Rich markup uses the project theme defined there.
 - Package extraction logic stays in `package.py`.
 - Diagnostic/debug output uses `logging`. In verbose mode it is intentionally routed to stdout for easy capture with `tee`; otherwise normal warnings/errors go to stderr.
 

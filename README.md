@@ -21,7 +21,8 @@ Current release: `1.0.1.0`
 **Resolution and review**
 
 - Qualifier-aware scoring (`-Q1`, `/NOPB`, `-EP`, `-TR`) with configurable manufacturer aliases
-- Interactive terminal resolver (`--interactive`) with saved manual selections
+- Interactive resolution (`--interactive`) with a full-screen Textual TUI on TTY terminals
+- Text-based CLI resolver fallback when not on a TTY
 - Optional OpenAI reranker (`--ai-resolve`) for remaining ambiguous candidates
 - Persistent distributor response cache with configurable TTL
 
@@ -112,7 +113,7 @@ python main.py -d designs/board.json -u 1000 --no-cache
 | `--flush-resolutions` | Also remove saved manual resolutions; may be used standalone |
 | `--cache-ttl-hours` | Cache retention in hours (default: `24`) |
 | `--no-cache` | Disable the persistent cache for this run |
-| `--interactive` | Prompt for manual candidate selection on ambiguous parts |
+| `--interactive` | Launch the full-screen TUI (TTY) or text-based resolver for ambiguous parts |
 | `--ai-resolve` | Use OpenAI to rerank ambiguous candidates before prompting |
 | `--ai-model` | OpenAI model for `--ai-resolve` (default: `gpt-5.4-mini`) |
 | `--ai-confidence-threshold` | Minimum AI confidence to auto-accept a candidate |
@@ -162,10 +163,10 @@ part numbers:
 2. **BeginsWith** on the full part number (catches longer orderable MPNs)
 3. **Fuzzy** -- strips known qualifier suffixes and searches with BeginsWith, then scores candidates by manufacturer, qualifier match, and availability
 
-Fuzzy matches are flagged for manual review. When `--interactive` is enabled,
-the terminal UI shows ranked candidates with package, price, and availability
-data. When `--ai-resolve` is also enabled, an OpenAI reranking step runs before
-the interactive prompt.
+Fuzzy matches are flagged for manual review. When `--interactive` is enabled on
+a TTY, BOM Builder launches a full-screen Textual TUI with a live parts table,
+running cost totals, and a modal dialog for candidate selection. When `--ai-resolve`
+is also enabled, an OpenAI reranking step runs before the interactive prompt.
 
 After Mouser resolution, configured distributors (Digi-Key, TI Store, NXP
 direct) are queried in parallel. Each offer is normalized and the cheapest
@@ -218,6 +219,13 @@ bom-builder/
 ├── lookup_cache.py            # SQLite-backed distributor response cache
 ├── secret_store.py            # Environment and .env-backed secret loading
 ├── resolution_store.py        # Saved manual resolution mappings
+├── console.py                 # Rich-powered shared console and theme
+├── tui/                       # Full-screen Textual TUI (--interactive)
+│   ├── app.py                 # BomBuilderApp — screen composition and lifecycle
+│   ├── events.py              # Textual Messages and ResolverRendezvous (Future-based)
+│   ├── worker.py              # Threading bridge: sync pricing ↔ async UI
+│   ├── widgets.py             # PartsTable, CostPanel, StatusBar
+│   └── resolver_modal.py      # ModalScreen for interactive candidate selection
 ├── manufacturers.yaml         # Manufacturer name aliases
 ├── packages.yaml              # Package pattern definitions
 ├── requirements.txt

@@ -965,7 +965,7 @@ class TestMultiDistributorPricing:
             network_requests = 0
             paced_network_requests = 0
 
-        perf_values = iter([100.0, 100.0, 100.5, 100.5])
+        perf_values = iter([100.0, 100.0, 100.0, 100.5, 100.5])
         monkeypatch.setattr(main, "price_mouser_part", fake_price_mouser_part)
         monkeypatch.setattr(main, "convert_offers_currency", lambda offers, *_: offers)
         monkeypatch.setattr(main.time, "perf_counter", lambda: next(perf_values))

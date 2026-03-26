@@ -31,3 +31,9 @@ runtime code.
    resolution_store
    secret_store
    ti
+   tui
+   tui.app
+   tui.events
+   tui.resolver_modal
+   tui.widgets
+   tui.worker

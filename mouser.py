@@ -19,7 +19,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -54,6 +54,7 @@ from mouser_scoring import (  # noqa: E402 — re-exported for backward compatib
     STRIP_SUFFIXES,
     MouserPart,
     ScoredCandidate,
+    collapse_packaging_variants,
     detect_input_qualifiers,
     has_real_mouser_part_number,
     is_non_component,
@@ -1141,7 +1142,14 @@ def _interactive_resolution_prompt(
     if not lookup.candidates or not _can_prompt_interactively():
         return lookup
 
-    total = len(lookup.candidates)
+    # Collapse packaging variants (tube/reel/tape differences) so the user
+    # only picks between electrically distinct parts.  The pricing pipeline's
+    # _auto_select_packaging_variant() picks the cheapest reel size afterward.
+    collapsed = collapse_packaging_variants(lookup.candidates, agg.manufacturer)
+    if len(collapsed) <= 1:
+        return lookup
+
+    total = len(collapsed)
     page = 0
 
     while True:
@@ -1179,7 +1187,7 @@ def _interactive_resolution_prompt(
         table.add_column("Availability")
 
         for idx in range(start, end):
-            candidate = lookup.candidates[idx]
+            candidate = collapsed[idx]
             package_text, pins_text = _candidate_package(candidate, agg.manufacturer)
             unit_text, currency = _candidate_unit_price(
                 candidate,
@@ -1217,7 +1225,7 @@ def _interactive_resolution_prompt(
         if not choice:
             continue
         if choice == "a" and lookup.part is not None:
-            selected = lookup.candidates[0]
+            selected = collapsed[0]
         elif choice == "s":
             return lookup
         elif choice == "n" and end < total:
@@ -1231,7 +1239,7 @@ def _interactive_resolution_prompt(
         elif choice.isdigit():
             index = int(choice) - 1
             if 0 <= index < total:
-                selected = lookup.candidates[index]
+                selected = collapsed[index]
             else:
                 console.print("  [error]Invalid candidate number.[/error]")
                 continue
@@ -1265,6 +1273,9 @@ def price_part(
     interactive: bool = False,
     resolution_store: Any | None = None,
     ai_resolver: Any | None = None,
+    resolver_callback: Callable[
+        ["AggregatedPart", "LookupResult", Any, "MouserClient"], "LookupResult"
+    ] | None = None,
 ) -> PricedPart:
     """Resolve one aggregated part into a priced distributor record.
 
@@ -1273,8 +1284,27 @@ def price_part(
     1. deterministic lookup
     2. saved manual resolution reuse
     3. optional AI reranking
-    4. optional interactive user selection
+    4. optional interactive user selection (or TUI modal via *resolver_callback*)
     5. package and price-break enrichment
+
+    Parameters
+    ----------
+    agg:
+        The aggregated BOM line to price.
+    client:
+        Active Mouser API client for searches and product-page fetches.
+    interactive:
+        Whether to invoke interactive candidate selection when the lookup
+        is ambiguous. Ignored when *resolver_callback* is provided.
+    resolution_store:
+        Persistent store for saved manual resolutions.
+    ai_resolver:
+        Optional AI reranker applied before interactive prompting.
+    resolver_callback:
+        When provided, this callable replaces the built-in text-based
+        ``_interactive_resolution_prompt``. The TUI uses this to show a
+        modal dialog instead. Signature:
+        ``(agg, lookup, resolution_store, client) -> LookupResult``.
     """
     priced = PricedPart.from_aggregated(agg)
 
@@ -1285,7 +1315,9 @@ def price_part(
             lookup = smart_lookup(agg.part_number, agg.manufacturer, client)
             lookup = _saved_resolution_for(agg, lookup, resolution_store)
         lookup, ai_note = _ai_resolution_for(agg, lookup, ai_resolver)
-        if interactive:
+        if resolver_callback is not None:
+            lookup = resolver_callback(agg, lookup, resolution_store, client)
+        elif interactive:
             lookup = _interactive_resolution_prompt(
                 agg,
                 lookup,

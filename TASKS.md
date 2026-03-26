@@ -41,4 +41,10 @@ Active tasks should be recorded here while work is in progress and checked off o
 - [x] Add fail-closed NXP direct pricing and surplus-aware cross-supplier supplier scoring
 - [x] Introduce explicit project versioning and cut the `1.0.0.0` release baseline
 - [x] Refactor the codebase: split mouser.py, deduplicate utilities, remove dead code, flatten context managers
+- [x] Add Rich styled console output and shared theme in `console.py`
+- [x] Build full-screen Textual TUI with live parts table, cost panel, and resolver modal
+- [x] Extract `_price_single_part()` so both CLI and TUI share the pricing pipeline
+- [x] Add `resolver_callback` to `mouser.py:price_part()` for TUI modal interception
+- [x] Replace threading.Event polling with Future-based `ResolverRendezvous` for instant shutdown wakeup
+- [x] Document TUI architecture, threading model, and keyboard shortcuts
 - [ ] Tighten deterministic Mouser resolution and ambiguity handling

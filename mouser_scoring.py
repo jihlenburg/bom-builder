@@ -401,6 +401,18 @@ def score_candidate(
         else:
             score -= weight * 1.5
 
+    # TI hard gate: when the BOM specifies a Q1 (automotive-qualified) part,
+    # non-Q1 candidates are a different qualification tier entirely — never
+    # acceptable as substitutes.  TI's Q1 suffix is always appended to the
+    # orderable MPN (e.g. "LM2775-Q1" → "LM2775QDSGRQ1"), so checking
+    # whether the candidate MPN ends with "Q1" is definitive.
+    if "automotive" in input_quals:
+        norm_mfr = _normalize_manufacturer_name(manufacturer)
+        if norm_mfr in ("texas instruments", "ti"):
+            if not cand_pn.upper().rstrip().endswith("Q1"):
+                log.debug("  TI Q1 hard gate: %s lacks Q1 suffix", cand_pn)
+                return -1
+
     if "automotive" not in input_quals:
         auto_pat = QUALIFIER_RULES["automotive"]["candidate_pattern"]
         if auto_pat.search(cand_text):
@@ -488,6 +500,55 @@ def is_packaging_variant(
     return True
 
 
+def collapse_packaging_variants(
+    scored: list[ScoredCandidate] | tuple[ScoredCandidate, ...],
+    manufacturer: str,
+) -> list[ScoredCandidate]:
+    """Deduplicate candidates that differ only by packaging (reel size, etc.).
+
+    Groups all candidates into packaging-variant equivalence classes using
+    :func:`is_packaging_variant`, then returns one representative per group —
+    the highest-scored member.  The result preserves the original score
+    ordering.
+
+    This is used before showing the interactive resolver so users choose
+    between electrically distinct parts (e.g. automotive Q1 vs. commercial)
+    rather than between reel sizes that ``_auto_select_packaging_variant()``
+    will optimise later anyway.
+
+    Parameters
+    ----------
+    scored:
+        Candidates sorted by descending score (as returned by the scoring
+        pipeline).
+    manufacturer:
+        Manufacturer name for package-info comparison inside
+        ``is_packaging_variant()``.
+
+    Returns
+    -------
+    list[ScoredCandidate]
+        One representative per packaging-variant group, in original score
+        order.
+    """
+    if not scored:
+        return []
+
+    # Each candidate is assigned to a group.  The first candidate seen in
+    # score order becomes the representative of its group.  Later candidates
+    # that are packaging variants of an existing representative are dropped.
+    representatives: list[ScoredCandidate] = []
+    for candidate in scored:
+        is_variant = False
+        for rep in representatives:
+            if is_packaging_variant(candidate.part, rep.part, manufacturer):
+                is_variant = True
+                break
+        if not is_variant:
+            representatives.append(candidate)
+    return representatives
+
+
 def requires_manual_review(
     scored: list[ScoredCandidate],
     method: MatchMethod,
@@ -495,19 +556,24 @@ def requires_manual_review(
 ) -> bool:
     """Return whether the top fuzzy match is still materially ambiguous.
 
-    Ambiguity is currently defined as a fuzzy lookup where the score gap to the
-    runner-up is small and the runner-up is not merely a packaging-only
-    variant.
+    Ambiguity is defined as a fuzzy lookup where, after collapsing packaging
+    variants (tube/reel/tape differences), there are still multiple distinct
+    candidates with a small score gap.  Packaging variants are handled
+    automatically by ``_auto_select_packaging_variant()`` in the pricing
+    pipeline, so they never constitute meaningful ambiguity.
     """
     if method != MatchMethod.FUZZY or not scored:
         return False
     if len(scored) == 1:
         return False
 
-    top = scored[0]
-    runner_up = scored[1]
-    if is_packaging_variant(top.part, runner_up.part, manufacturer):
+    # Collapse packaging variants so reel-size differences don't trigger
+    # the interactive resolver needlessly.
+    collapsed = collapse_packaging_variants(scored, manufacturer)
+    if len(collapsed) <= 1:
         return False
 
+    top = collapsed[0]
+    runner_up = collapsed[1]
     score_gap = top.score - runner_up.score
     return score_gap < 10.0
