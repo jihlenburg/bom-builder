@@ -1,236 +1,288 @@
 # BOM Builder
 
-A Python CLI tool for building and pricing electrical Bills of Materials (eBOMs).
-Queries Mouser, Digi-Key, TI Store, and NXP direct, then selects the best
-distributor offer per BOM line after cross-supplier price, surplus, and
-packaging-plan comparison.
+BOM Builder is a native Go CLI for electronic BOM sourcing and pricing across
+Mouser, Digi-Key, TI, and NXP. The Go rewrite is now the active implementation;
+the former Python application is preserved in [`legacy/`](./legacy).
 
-Current release: `1.0.1.0`
+Current Go milestone: `3.0.0-dev`
 
-## Features
+## What works today
 
-**Sourcing and pricing**
+- Native Go executable with no Python or virtual-environment dependency
+- Machine-readable capability and schema discovery
+- Safe provider configuration discovery without credential disclosure
+- Strict design JSON validation from files or stdin
+- Live Mouser and Digi-Key health checks, lookup, and quantity pricing
+- Live TI Store health checks, direct inventory, lifecycle, order-limit, and
+  price-break sourcing
+- Live NXP Store health checks and direct inventory/pricing through a private,
+  headless Chrome/Edge session
+- Multi-provider comparison with every normalized offer retained in JSON
+- Exact six-place decimal prices and stock-aware purchase plans
+- Digi-Key OAuth token reuse, locale/account pricing, and composite SKU plans
+- TI OAuth token reuse through the native Go HTTP stack—no system `curl`
+  dependency
+- Datasheet and product links from normalized Mouser and Digi-Key offers
+- HTTPS-only PDF downloads with size limits, signature checks, no-overwrite
+  output, and SHA-256 artifact metadata
+- Stock-aware resistor, capacitor, and inductor candidate evaluation with a
+  field-by-field compatibility matrix
+- Versioned SQLite lookup cache with WAL, TTL policies, payload checksums,
+  credential-free cache-only/offline operation, and safe inspection/pruning
+- Stable JSON stdout and process exit codes
 
-- Multi-pass fuzzy part number resolution on Mouser (exact, begins-with, stripped qualifier)
-- Optional Digi-Key, TI Store, and NXP direct pricing with automatic cheapest-offer selection
-- Price-break-aware overbuy and mixed-packaging optimization (reel + cut-tape plans)
-- Manufacturing-biased plan preference within a configurable cost delta
-- Surplus-aware cross-supplier scoring
-- FX normalization for cross-currency comparison via ECB daily rates
+Reports and approved-resolution persistence are being ported in focused slices.
+`bom-builder capabilities --full` is the authoritative way for a coding agent
+to discover what the installed build can currently do.
 
-**Resolution and review**
+## Build
 
-- Qualifier-aware scoring (`-Q1`, `/NOPB`, `-EP`, `-TR`) with configurable manufacturer aliases
-- Interactive resolution (`--interactive`) with a full-screen Textual TUI on TTY terminals
-- Text-based CLI resolver fallback when not on a TTY
-- Optional OpenAI reranker (`--ai-resolve`) for remaining ambiguous candidates
-- Persistent distributor response cache with configurable TTL
-
-**Input and output**
-
-- JSON design files with multi-design aggregation and production-quantity scaling
-- CSV, Excel, and JSON output with buyer-facing order-plan columns
-- Automatic package and pin count extraction from distributor data
-- Per-run trace transcripts for debugging
-
-## Quick Start
-
-```bash
-pip install -r requirements.txt
-```
-
-Create a `.env` file with at minimum your Mouser API key:
-
-```bash
-MOUSER_API_KEY=your-mouser-api-key
-```
-
-Run a BOM:
+BOM Builder uses the Go 1.25 language and module baseline. Reproducible
+development commands pin the latest supported Go 1.25 patch, `go1.25.12`.
+Install any Go toolchain with automatic toolchain downloads enabled, then run:
 
 ```bash
-python main.py -d designs/board.json -u 1000
+make build
+./bin/bom-builder --version
 ```
 
-For the full list of environment variables, distributor credentials, locale
-settings, cache paths, and platform defaults, see the
-[Secret Management](./docs/guides/secrets.md) guide.
-
-## Usage
+Or use Go directly:
 
 ```bash
-# Single design, 1000 units, CSV output
-python main.py -d designs/power_supply.json -u 1000
-
-# Multiple designs, Excel output
-python main.py -d designs/*.json -u 500 -f excel -o bom.xlsx
-
-# JSON output with 2% attrition factor
-python main.py -d designs/board.json -u 1000 -a 0.02 -f json
-
-# Verbose diagnostic output
-python main.py -d designs/board.json -u 1000 -v | tee diag.log
-
-# Capture a run transcript
-python main.py -d designs/board.json -u 1000 --trace-file run.log
-
-# Look up a single part directly
-python main.py --part-number ADS7138-Q1 --manufacturer TI -u 1 --verbose
-
-# Resolve ambiguous parts interactively
-python main.py -d designs/board.json -u 1000 --interactive
-
-# AI reranking before interactive fallback
-python main.py -d designs/board.json -u 1000 --ai-resolve --interactive
-
-# Flush the distributor cache
-python main.py --flush
-
-# Flush cache and saved resolutions for a clean slate
-python main.py --flush-resolutions
-
-# Force fresh distributor queries for one run
-python main.py -d designs/board.json -u 1000 --no-cache
+go build -trimpath -o bin/bom-builder ./cmd/bom-builder
 ```
 
-### CLI Options
+The direct SQLite dependency is pinned to `modernc.org/sqlite v1.55.0`, the
+latest stable release compatible with this baseline. Use, for example,
+`make GO_TOOLCHAIN=go1.26.5 check` only when deliberately testing another
+compiler.
 
-| Flag | Description |
-|------|-------------|
-| `-d`, `--design` | Design JSON file(s); required unless using a standalone flush action |
-| `--part-number` | Look up one manufacturer part number without a design file |
-| `--manufacturer` | Manufacturer hint (required with `--part-number`) |
-| `--quantity-per-unit` | Quantity per finished unit in single-part mode |
-| `--description` | Description hint in single-part mode |
-| `--package` | Package hint in single-part mode |
-| `--pins` | Pin-count hint in single-part mode |
-| `-u`, `--units` | Number of units to build |
-| `-f`, `--format` | Output format: `csv`, `excel`, `json` |
-| `-o`, `--output` | Output file path |
-| `-a`, `--attrition` | Waste factor, e.g. `0.02` for 2% |
-| `--mouser-api-key` | Mouser API key (overrides `.env`) |
-| `--mouser-delay` | Delay between live Mouser requests in seconds (default: `1.0`) |
-| `--flush` | Remove distributor cache and temp files; may be used standalone |
-| `--flush-resolutions` | Also remove saved manual resolutions; may be used standalone |
-| `--cache-ttl-hours` | Cache retention in hours (default: `24`) |
-| `--no-cache` | Disable the persistent cache for this run |
-| `--interactive` | Launch the full-screen TUI (TTY) or text-based resolver for ambiguous parts |
-| `--ai-resolve` | Use OpenAI to rerank ambiguous candidates before prompting |
-| `--ai-model` | OpenAI model for `--ai-resolve` (default: `gpt-5.4-mini`) |
-| `--ai-confidence-threshold` | Minimum AI confidence to auto-accept a candidate |
-| `-v`, `--verbose` | Full diagnostic trace on stdout |
-| `--trace-file` | Mirror stdout/stderr into a file |
-| `--version` | Show version and exit |
-| `-h`, `--help` | Show CLI help and exit |
+The resulting executable does not require Python, a virtual environment, or a
+Go installation on the target machine.
 
-## Design JSON Format
-
-```json
-{
-  "design": "Power Supply Rev A",
-  "version": "1.0",
-  "parts": [
-    {
-      "part_number": "RC0402FR-0710KL",
-      "manufacturer": "Yageo",
-      "quantity": 4,
-      "reference": "R1,R2,R3,R4",
-      "description": "10kOhm 0402 1% resistor",
-      "package": "0402",
-      "pins": 2
-    }
-  ]
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `design` | yes | Design name |
-| `version` | no | Revision string |
-| `parts[].part_number` | yes | Manufacturer part number |
-| `parts[].manufacturer` | yes | Manufacturer name |
-| `parts[].quantity` | yes | Quantity per unit |
-| `parts[].reference` | no | Reference designators |
-| `parts[].description` | no | Human-readable description |
-| `parts[].package` | no | Package type (auto-detected if omitted) |
-| `parts[].pins` | no | Pin count (auto-detected if omitted) |
-
-## Part Number Resolution
-
-The tool uses a multi-pass lookup strategy to handle incomplete or shorthand
-part numbers:
-
-1. **Exact match** on the full part number
-2. **BeginsWith** on the full part number (catches longer orderable MPNs)
-3. **Fuzzy** -- strips known qualifier suffixes and searches with BeginsWith, then scores candidates by manufacturer, qualifier match, and availability
-
-Fuzzy matches are flagged for manual review. When `--interactive` is enabled on
-a TTY, BOM Builder launches a full-screen Textual TUI with a live parts table,
-running cost totals, and a modal dialog for candidate selection. When `--ai-resolve`
-is also enabled, an OpenAI reranking step runs before the interactive prompt.
-
-After Mouser resolution, configured distributors (Digi-Key, TI Store, NXP
-direct) are queried in parallel. Each offer is normalized and the cheapest
-confident result is selected per BOM line. Manufacturer-direct stores (TI, NXP)
-are treated as authoritative for their own parts.
-
-See the [Interactive Resolution](./docs/guides/interactive-resolution.md) guide
-for details on the terminal chooser and saved resolutions.
-
-## Documentation
-
-Detailed guides live under [`docs/`](./docs):
-
-- [Secret Management](./docs/guides/secrets.md) -- environment variables, `.env` setup, platform defaults
-- [Interactive Resolution](./docs/guides/interactive-resolution.md) -- terminal chooser and saved resolutions
-- [Digi-Key Account Setup](./docs/guides/digikey-account-setup.md) -- one-time OAuth account lookup
-
-Generated API documentation can be built with Sphinx:
+## Agent discovery
 
 ```bash
-pip install -r docs/requirements.txt
-make -C docs html
-open docs/_build/html/index.html
+./bin/bom-builder capabilities --full --pretty
+./bin/bom-builder providers list --pretty
+./bin/bom-builder providers check --providers mouser,digikey,ti,nxp --live --pretty
+./bin/bom-builder schema input --pretty
+./bin/bom-builder help documents
 ```
 
-Edit `manufacturers.yaml` to add or update manufacturer name aliases (e.g. "TI"
-to "Texas Instruments").
+`capabilities --full` returns the implemented command manifest, planned
+commands, provider readiness, runtime platform, and all public JSON Schemas in
+one JSON document.
 
-## Project Structure
+## Validate a design
 
+```bash
+./bin/bom-builder validate legacy/designs/example_power_supply.json --pretty
+generate-design | ./bin/bom-builder validate -
 ```
-bom-builder/
-├── main.py                    # CLI entry point and orchestration
-├── models.py                  # Pydantic data models (Part, PricedPart, BomSummary, ...)
-├── bom.py                     # Design loading and part aggregation
-├── mouser.py                  # Mouser API client, multi-pass lookup, and pricing pipeline
-├── mouser_scoring.py          # Candidate matching, scoring, and qualification rules
-├── mouser_packaging.py        # Packaging detail extraction from search and product pages
-├── package.py                 # Package/pin extraction logic
-├── report.py                  # CSV, Excel, and JSON output
-├── config.py                  # Configuration and env loading
-├── ai_resolver.py             # Optional OpenAI candidate reranker
-├── digikey.py                 # Digi-Key V4 client with locale-aware pricing
-├── digikey_auth.py            # Digi-Key OAuth and account-discovery helpers
-├── ti.py                      # TI Store Inventory and Pricing API client
-├── nxp.py                     # NXP direct-store client with fail-closed parsing
-├── fx.py                      # FX rate provider for cross-currency normalization
-├── optimizer.py               # Distributor-agnostic purchase-plan optimization
-├── manufacturer_packaging.py  # Manufacturer fallback packaging parsers and shared utilities
-├── lookup_cache.py            # SQLite-backed distributor response cache
-├── secret_store.py            # Environment and .env-backed secret loading
-├── resolution_store.py        # Saved manual resolution mappings
-├── console.py                 # Rich-powered shared console and theme
-├── tui/                       # Full-screen Textual TUI (--interactive)
-│   ├── app.py                 # BomBuilderApp — screen composition and lifecycle
-│   ├── events.py              # Textual Messages and ResolverRendezvous (Future-based)
-│   ├── worker.py              # Threading bridge: sync pricing ↔ async UI
-│   ├── widgets.py             # PartsTable, CostPanel, StatusBar
-│   └── resolver_modal.py      # ModalScreen for interactive candidate selection
-├── manufacturers.yaml         # Manufacturer name aliases
-├── packages.yaml              # Package pattern definitions
-├── requirements.txt
-├── .env                       # Local API keys and developer overrides (gitignored)
-├── scripts/                   # Operational helpers (fixture capture, Digi-Key setup)
-├── tests/                     # pytest test suite
-└── docs/                      # Project documentation and Sphinx API docs
+
+Validation is strict: unknown fields, empty identifiers, invalid quantities,
+trailing JSON values, and oversized input documents are rejected.
+
+## Lookup and price
+
+```bash
+./bin/bom-builder lookup RC0402FR-0710KL \
+  --manufacturer Yageo \
+  --quantity 950 \
+  --providers auto \
+  --pretty
+
+./bin/bom-builder price legacy/designs/example_power_supply.json \
+  --units 100 \
+  --attrition 0.02 \
+  --providers mouser,digikey,ti,nxp \
+  --pretty
+```
+
+Prices are JSON strings such as `"0.005000"` so calling agents never receive
+binary floating-point approximations. An offer becomes `selected_plan` only
+when the MPN is exact and reported stock covers the purchase quantity.
+Non-exact candidates remain review-required. `--providers auto` uses every
+configured native provider. Explicit provider selection never requires
+credentials for providers outside that selection.
+
+TI direct-store lookups are automatically skipped for non-TI manufacturers.
+Known non-active lifecycle states and generic-to-orderable part resolutions
+remain review-required; stock and TI Store order limits must both cover the
+purchase plan before it can be selected.
+
+NXP direct-store lookups are automatically skipped for non-NXP/Freescale
+manufacturers. The adapter starts an isolated headless Chrome or Edge process
+and communicates with it directly over the Chrome DevTools Protocol; it does
+not require Playwright, Python, or a browser extension. The temporary browser
+profile is deleted when the command ends. Exact orderable MPNs, confirmed MOQ
+and package multiples, and sufficient reported stock are all required for a
+selected plan. Base-part to packaging-suffix matches remain review-required.
+
+When more than one provider is selected, each normalized candidate is returned
+in `parts[].offers`, while `parts[].offer` is the chosen safe plan. Plans in
+different currencies are never compared; the command fails closed until an FX
+layer can prove a common currency.
+
+## Persistent lookup cache
+
+`lookup`, `price`, `documents list`, and `alternatives` cache successful
+normalized provider results for 24 hours by default. The cache stores no API
+keys, tokens, or raw provider responses. Keys bind the provider adapter version,
+part, manufacturer, quantity, package constraints, and a hash of the applicable
+market/account context.
+
+```bash
+# Default: use a fresh hit, otherwise contact the provider and refresh it.
+./bin/bom-builder lookup RC0402FR-0710KL --manufacturer Yageo \
+  --cache-policy prefer --pretty
+
+# Never initialize provider clients; accept only fresh entries.
+./bin/bom-builder price design.json --units 100 \
+  --cache-policy only --pretty
+
+# Never initialize provider clients; expired entries are allowed and counted.
+./bin/bom-builder price design.json --units 100 \
+  --cache-policy offline --pretty
+```
+
+The policies are `prefer`, `refresh`, `only`, `offline`, and `off`. Configure
+them with `--cache-policy`, `--cache-db`, and `--cache-ttl`, or the equivalent
+`BOM_BUILDER_CACHE_POLICY`, `BOM_BUILDER_CACHE_DB`, and
+`BOM_BUILDER_CACHE_TTL` environment variables. Run metadata reports hits,
+stale hits, misses, refreshes, writes, errors, and the number of original
+provider requests represented by reused entries.
+
+Inspect and verify the database without exposing cached payloads:
+
+```bash
+./bin/bom-builder cache status --pretty
+./bin/bom-builder cache list --provider mouser --include-stale --pretty
+./bin/bom-builder cache verify --pretty
+```
+
+Pruning is preview/apply rather than an immediate destructive command:
+
+```bash
+./bin/bom-builder cache prune --all --pretty
+./bin/bom-builder cache prune --all --apply 'sha256:<token>' --pretty
+```
+
+The token is valid only for the exact provider/key/payload set shown by the
+current preview. Without `--all`, only expired entries are selected.
+
+## Datasheets and evidence
+
+Discover provider-supplied evidence links:
+
+```bash
+./bin/bom-builder documents list RC0402FR-0710KL \
+  --manufacturer Yageo \
+  --providers mouser,digikey \
+  --pretty
+```
+
+The result distinguishes datasheets from product pages and marks the preferred
+downloadable datasheet. Download it in a separate, explicit operation:
+
+```bash
+./bin/bom-builder documents fetch 'https://example.com/part.pdf' \
+  --output ./part.pdf \
+  --pretty
+```
+
+Fetching accepts only HTTPS URLs on public networks, follows at most five safe
+redirects, defaults to a 25 MiB limit, verifies a PDF signature, and never
+overwrites an existing file. The JSON result records the source/final URLs,
+absolute output path, byte count, retrieval time, and SHA-256 digest.
+
+## Eurocircuits assembly BOM export
+
+```bash
+./bin/bom-builder export ec-bom design.json --output ec_bom.csv --pretty
+```
+
+Renders one validated design as an upload-ready Eurocircuits assembly BOM:
+semicolon-separated, CRLF line endings, columns
+`Item;Quantity;Designators;Manufacturer;MPN;Description;Value;Package;Mounted;Comment`.
+The optional part fields `designators`, `value`, `mounted`, and `comment`
+fill the matching columns; parts without a `mounted` flag export as
+mounted. The command needs no provider credentials, refuses to overwrite
+an existing output file, and reports the absolute path, byte count,
+SHA-256, and line count in its JSON envelope.
+
+## Stock-aware alternatives
+
+Alternative-part evaluation takes a strict JSON request so an LLM or a human
+can supply candidate specifications extracted from known evidence:
+
+```bash
+./bin/bom-builder alternatives examples/alternatives-resistor.json \
+  --providers mouser,digikey \
+  --only-if-shortage \
+  --pretty
+```
+
+The embedded request schema is available with:
+
+```bash
+./bin/bom-builder schema alternatives --pretty
+```
+
+The first implementation deliberately covers only resistors, capacitors, and
+inductors. It checks package, dimensions when supplied, temperature range,
+qualifications, and family-specific electrical ratings. Every field is
+reported as `equal`, `better`, `worse`, or `unknown`; a missing critical
+candidate value can never pass as compatible. Incompatible candidates are not
+sent to providers. Viable candidates receive the same exact, stock-aware,
+common-currency sourcing used by `lookup`.
+
+`recommended_for_review` means “best stocked candidate supported by the
+supplied values,” not “automatically approved.” The command intentionally exits
+with code `3` and keeps `engineering_review_required: true`. Add fetched
+document URL/hash pairs to `source_documents` to preserve evidence identity,
+and verify every authored value before approval.
+
+## Configuration
+
+Copy `.env.example` to `.env` and add provider credentials. Existing process
+environment variables take precedence. `.env` parsing never evaluates shell
+syntax.
+
+NXP needs no credentials, but requires an installed Google Chrome, Chromium, or
+Microsoft Edge executable. BOM Builder discovers common locations
+automatically; set `BOM_BUILDER_NXP_BROWSER` when the executable is elsewhere.
+Set `NXP_STORE_CURRENCY` explicitly for the store context you intend to use.
+
+Run `./bin/bom-builder help` for concise examples, or
+`./bin/bom-builder capabilities --full` for the authoritative machine-readable
+contract.
+
+## Exit codes
+
+| Code | Meaning |
+|---:|---|
+| `0` | Command completed successfully |
+| `2` | Invalid command or design input |
+| `3` | Valid result is incomplete, short, unresolved, or review-required |
+| `4` | Provider, authentication, quota, or safe-total failure |
+| `5` | Internal failure |
+
+## Repository layout
+
+```text
+cmd/bom-builder/     executable entry point
+internal/cli/        command parsing and JSON protocol
+internal/contract/   public typed contracts
+internal/config/     safe .env loading
+internal/design/     design loading and validation
+internal/bom/         deterministic demand aggregation
+internal/money/       exact fixed-point decimal arithmetic
+internal/procurement/ normalized offers and purchase-plan optimization
+internal/provider/    provider discovery, health, and adapters
+internal/lookupcache/ versioned SQLite normalized-result persistence
+internal/sourcing/    provider-independent orchestration and safe totals
+schemas/             public JSON Schemas and embedded access
+legacy/              archived Python implementation
 ```

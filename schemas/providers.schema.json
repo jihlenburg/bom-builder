@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jihlenburg/bom-builder/schemas/providers.schema.json",
+  "title": "BOM Builder provider discovery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "exit_code", "live", "providers"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "status": {"enum": ["ok", "ready", "degraded", "failed", "pending"]},
+    "exit_code": {"enum": [0, 2, 4, 5]},
+    "live": {"type": "boolean"},
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "implemented",
+          "configured",
+          "status",
+          "live",
+          "request_count",
+          "details"
+        ],
+        "properties": {
+          "name": {"type": "string"},
+          "kind": {"enum": ["distributor", "service"]},
+          "implemented": {"type": "boolean"},
+          "configured": {"type": "boolean"},
+          "status": {
+            "enum": ["ok", "ready", "failed", "pending", "unconfigured"]
+          },
+          "live": {"type": "boolean"},
+          "latency_ms": {"type": "integer", "minimum": 0},
+          "request_count": {"type": "integer", "minimum": 0},
+          "error_code": {"type": "string"},
+          "error_message": {"type": "string"},
+          "details": {"type": "object"}
+        }
+      }
+    }
+  }
+}

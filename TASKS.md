@@ -1,50 +1,25 @@
 # Tasks
 
-Active tasks should be recorded here while work is in progress and checked off only after implementation and verification.
+## Current Go Rewrite Cycle
 
-## Current Cycle
-
-- [x] Add cross-platform secret loading with environment and file fallback
-- [x] Remove committed secrets from `.env`
-- [x] Start documentation under `docs/` and add a secret-management guide
-- [x] Add a project logbook and persistent task tracking
-- [x] Update `CLAUDE.md` with the current development workflow and repository rules
-- [x] Add a persistent Mouser lookup cache with 24-hour retention
-- [x] Tighten secret access by removing runtime keychain reads and adding an allowlisted launcher
-- [x] Harden the launcher and fallback secret file handling against broad access
-- [x] Re-run the LUPA BOM and measure resolver improvements
-- [x] Add an interactive resolver UI with saved manual selections
-- [x] Add optional AI-assisted reranking only for still-ambiguous matches
-- [x] Revert secret handling back to a simple `.env` workflow and remove launcher/keychain code
-- [x] Align the OpenAI resolver default to `gpt-5.4-mini`
-- [x] Refactor the OpenAI resolver into smaller request/parse/validation helpers
-- [x] Remove orphaned generated files and stale launcher references after the `.env` rollback
-- [x] Tighten `CLAUDE.md` to require proper Python API documentation for all future code
-- [x] Add source-wide Sphinx-style API documentation across all Python modules
-- [x] Document optional cache and resolution path overrides in `.env` and docs
-- [x] Add direct single-part CLI lookup mode and separate API lookup failures from true no-match cases
-- [x] Add Mouser multi-key fallback and reduce wasted requests on saved resolutions and exhausted daily quotas
-- [x] Refresh `.gitignore` for local env files, caches, generated docs, and BOM outputs
-- [x] Add Digi-Key OAuth client credentials to the local `.env` workflow and secret registry
-- [x] Add a one-time Digi-Key OAuth helper to retrieve associated account IDs and document the setup flow
-- [x] Add a locale-aware Digi-Key V4 client and live EUR probe path for EU pricing verification
-- [x] Integrate Digi-Key into the BOM pricing pipeline and auto-select the cheapest confident distributor offer
-- [x] Fix `.env` precedence so one-shot shell overrides work for true cold-cache runs
-- [x] Add a generated Sphinx API documentation toolchain under `docs/`
-- [x] Add overbuy-aware distributor pricing and shift final summaries to per-unit cost views
-- [x] Add manufacturer-page fallback parsing, cached live fixture capture, and shared purchase-plan optimization
-- [x] Add TI direct pricing plus FX normalization into the final supplier comparison
-- [x] Redesign the buyer-facing Excel/CSV order sheet and live console output
-- [x] Clean the repository, refresh docs, and remove stray local build/runtime artifacts
-- [x] Prefer manufacturing-friendly reel-heavy plans when they stay within a small configurable cost delta
-- [x] Expand the persistent cache to Digi-Key and TI responses, and scope `--mouser-delay` back to live Mouser traffic
-- [x] Add fail-closed NXP direct pricing and surplus-aware cross-supplier supplier scoring
-- [x] Introduce explicit project versioning and cut the `1.0.0.0` release baseline
-- [x] Refactor the codebase: split mouser.py, deduplicate utilities, remove dead code, flatten context managers
-- [x] Add Rich styled console output and shared theme in `console.py`
-- [x] Build full-screen Textual TUI with live parts table, cost panel, and resolver modal
-- [x] Extract `_price_single_part()` so both CLI and TUI share the pricing pipeline
-- [x] Add `resolver_callback` to `mouser.py:price_part()` for TUI modal interception
-- [x] Replace threading.Event polling with Future-based `ResolverRendezvous` for instant shutdown wakeup
-- [x] Document TUI architecture, threading model, and keyboard shortcuts
-- [ ] Tighten deterministic Mouser resolution and ambiguity handling
+- [x] Preserve the Python implementation under `legacy/`
+- [x] Establish a clean Go module at repository root
+- [x] Pin the rewrite to Go 1.25.12 and current compatible dependencies
+- [x] Add typed public contracts and stable exit codes
+- [x] Add safe `.env` loading without shell evaluation
+- [x] Add `capabilities --full`, provider discovery, and schema commands
+- [x] Add strict file/stdin design validation
+- [x] Add a reproducible native build helper
+- [x] Add unit and command-contract tests
+- [x] Port the money model using exact fixed-point decimal arithmetic
+- [x] Port the purchase-plan optimizer and legacy behavioral cases
+- [ ] Add serialized cross-language optimizer golden fixtures
+- [x] Implement and live-verify the Mouser adapter
+- [x] Add native `lookup`, `price`, and `providers check` commands
+- [x] Implement and live-verify the Digi-Key adapter
+- [x] Compare safe Mouser and Digi-Key plans with per-provider provenance
+- [x] Implement and live-verify the pure-Go TI Store adapter
+- [x] Implement and live-verify the browser-backed native Go NXP adapter
+- [x] Add safe datasheet discovery and verified PDF downloads
+- [x] Add stock-aware resistor, capacitor, and inductor alternative evaluation
+- [x] Add the versioned native SQLite lookup cache and safe management commands

@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jihlenburg/bom-builder/schemas/alternatives.schema.json",
+  "title": "BOM Builder passive alternatives request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "required_quantity", "original", "candidates"],
+  "properties": {
+    "kind": {"enum": ["resistor", "capacitor", "inductor"]},
+    "required_quantity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000000
+    },
+    "original": {"type": "object"},
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 25
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "resistor"}}},
+      "then": {
+        "properties": {
+          "original": {"$ref": "#/$defs/resistorOriginal"},
+          "candidates": {
+            "items": {"$ref": "#/$defs/resistorPart"}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "capacitor"}}},
+      "then": {
+        "properties": {
+          "original": {"$ref": "#/$defs/capacitorOriginal"},
+          "candidates": {
+            "items": {"$ref": "#/$defs/capacitorPart"}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "inductor"}}},
+      "then": {
+        "properties": {
+          "original": {"$ref": "#/$defs/inductorOriginal"},
+          "candidates": {
+            "items": {"$ref": "#/$defs/inductorPart"}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "sourceDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256"],
+      "properties": {
+        "url": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      }
+    },
+    "commonPart": {
+      "type": "object",
+      "required": ["part_number", "manufacturer"],
+      "properties": {
+        "part_number": {"type": "string", "minLength": 1, "maxLength": 80},
+        "manufacturer": {"type": "string", "minLength": 1, "maxLength": 120},
+        "package": {"type": "string", "minLength": 1},
+        "tolerance_percent": {"$ref": "#/$defs/decimal"},
+        "temperature_min_c": {
+          "type": "integer",
+          "minimum": -273,
+          "maximum": 1000
+        },
+        "temperature_max_c": {
+          "type": "integer",
+          "minimum": -273,
+          "maximum": 1000
+        },
+        "length_mm": {"$ref": "#/$defs/decimal"},
+        "width_mm": {"$ref": "#/$defs/decimal"},
+        "height_mm": {"$ref": "#/$defs/decimal"},
+        "qualifications": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "source_documents": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/sourceDocument"}
+        }
+      }
+    },
+    "resistorPart": {
+      "allOf": [
+        {"$ref": "#/$defs/commonPart"},
+        {
+          "type": "object",
+          "properties": {
+            "resistance_ohms": {"$ref": "#/$defs/decimal"},
+            "power_watts": {"$ref": "#/$defs/decimal"},
+            "voltage_volts": {"$ref": "#/$defs/decimal"},
+            "technology": {"type": "string", "minLength": 1}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "resistorOriginal": {
+      "allOf": [
+        {"$ref": "#/$defs/resistorPart"},
+        {
+          "required": [
+            "package",
+            "resistance_ohms",
+            "tolerance_percent",
+            "power_watts",
+            "voltage_volts",
+            "temperature_min_c",
+            "temperature_max_c",
+            "technology"
+          ]
+        }
+      ]
+    },
+    "capacitorPart": {
+      "allOf": [
+        {"$ref": "#/$defs/commonPart"},
+        {
+          "type": "object",
+          "properties": {
+            "capacitance_farads": {"$ref": "#/$defs/decimal"},
+            "voltage_volts": {"$ref": "#/$defs/decimal"},
+            "esr_ohms": {"$ref": "#/$defs/decimal"},
+            "dielectric": {"type": "string", "minLength": 1},
+            "polarized": {"type": "boolean"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "capacitorOriginal": {
+      "allOf": [
+        {"$ref": "#/$defs/capacitorPart"},
+        {
+          "required": [
+            "package",
+            "capacitance_farads",
+            "tolerance_percent",
+            "voltage_volts",
+            "temperature_min_c",
+            "temperature_max_c",
+            "dielectric",
+            "polarized"
+          ]
+        }
+      ]
+    },
+    "inductorPart": {
+      "allOf": [
+        {"$ref": "#/$defs/commonPart"},
+        {
+          "type": "object",
+          "properties": {
+            "inductance_henries": {"$ref": "#/$defs/decimal"},
+            "rated_current_amps": {"$ref": "#/$defs/decimal"},
+            "saturation_current_amps": {"$ref": "#/$defs/decimal"},
+            "dc_resistance_ohms": {"$ref": "#/$defs/decimal"},
+            "shielded": {"type": "boolean"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "inductorOriginal": {
+      "allOf": [
+        {"$ref": "#/$defs/inductorPart"},
+        {
+          "required": [
+            "package",
+            "inductance_henries",
+            "tolerance_percent",
+            "rated_current_amps",
+            "saturation_current_amps",
+            "dc_resistance_ohms",
+            "temperature_min_c",
+            "temperature_max_c",
+            "shielded"
+          ]
+        }
+      ]
+    }
+  }
+}

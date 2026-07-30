@@ -1,0 +1,30 @@
+{
+  "kind": "resistor",
+  "required_quantity": 100,
+  "original": {
+    "part_number": "RC0402FR-0710KL",
+    "manufacturer": "Yageo",
+    "package": "0402",
+    "resistance_ohms": "10000",
+    "tolerance_percent": "1",
+    "power_watts": "0.0625",
+    "voltage_volts": "50",
+    "temperature_min_c": -55,
+    "temperature_max_c": 155,
+    "technology": "thick film"
+  },
+  "candidates": [
+    {
+      "part_number": "CRCW040210K0FKED",
+      "manufacturer": "Vishay",
+      "package": "0402",
+      "resistance_ohms": "10000",
+      "tolerance_percent": "1",
+      "power_watts": "0.1",
+      "voltage_volts": "50",
+      "temperature_min_c": -55,
+      "temperature_max_c": 155,
+      "technology": "thick film"
+    }
+  ]
+}

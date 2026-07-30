@@ -1,57 +1,162 @@
 # Logbook
 
-## 2026-03-22
+## 2026-07-31
 
-- Refactored the core application flow into smaller helpers across `main.py`, `bom.py`, `report.py`, `package.py`, and `mouser.py`.
-- Added regression coverage for CLI helpers, report output, config logging, and Mouser pricing edge cases.
-- Introduced cross-platform secret resolution in `secret_store.py` with environment-variable and fallback file support.
-- Moved secret-management documentation under `docs/` and scrubbed secrets from `.env`.
-- Stored the current Mouser and OpenAI API keys in the macOS Keychain under project-specific service names.
-- Tightened secret access by removing runtime keychain reads from the Python app and adding `scripts/with-project-secrets.sh` as an allowlisted launcher for macOS Keychain and Linux Secret Service.
-- Hardened the launcher by removing `eval`, validating registry-driven names, and rejecting weak-permission or symlinked fallback secret files.
-- Switched the secure launcher to unbuffered Python output so BOM runs report progress live instead of appearing hung under non-interactive execution.
-- Added persistent Mouser search caching in `lookup_cache.py` with a default 24-hour TTL and CLI controls for disabling or retuning the cache window.
-- Began strengthening the Mouser resolver to prefer buyable orderable parts, retry transient API failures, and reduce unnecessary manual-review flags.
-- Fixed TI package extraction for `8-SOT-23` / reel-vs-tube temperature-sensor variants, which reduced the LUPA BOM manual-review set from 10 parts to 8 and corrected the console summary split between fuzzy-resolved and true review-required matches.
-- Made the Mouser pacing logic cache-aware so cached runs no longer pay the per-part `--mouser-delay` or inter-pass lookup sleeps when no network request is needed.
-- Added an interactive terminal resolver with persistent saved selections in `resolution_store.py`, and expanded TI package decoding so the chooser can present package-aware candidate lists such as `SOIC-8`, `WSON-2`, `X2SON-4`, `HSOIC-8`, and `VSSOP-19`.
-- Added an optional OpenAI reranker in `ai_resolver.py` that runs before interactive review, uses the Responses API with structured JSON output, and falls back cleanly when the AI abstains or the API key is invalid.
-- Reverted secret handling back to a simple `.env` plus environment-variable workflow, removed the dedicated launcher/keychain registry path, and simplified the secret-loading docs and tests to match.
-- Updated the default AI model to `gpt-5.4-mini` based on the current OpenAI model docs, while keeping the reranker on the Responses API.
-- Refactored `ai_resolver.py` into smaller helper functions for request headers, JSON schema construction, decision parsing, and decision validation so the GPT-5.4 mini path is easier to maintain.
-- Removed orphaned generated outputs, Python cache directories, and the unused temporary design file, then re-verified the repository with a full passing test run.
-- Tightened `CLAUDE.md` so future work must include proper Sphinx-style Python API documentation for modules, classes, functions, properties, and meaningful internal helpers.
-- Expanded the source tree to full API-doc coverage with richer module, class, function, method, property, and helper docstrings across the runtime modules, then verified both docstring coverage and the full test suite.
-- Added `.env.example` and documented the optional cache / resolution path overrides, including the exact platform defaults that apply when those entries are omitted or blank.
-- Added a direct single-part CLI lookup mode built on a synthetic one-line design, and fixed the console/summary classification so Mouser HTTP failures such as `TooManyRequests` are reported as lookup failures instead of misleading `No match found` misses.
-- Added support for multiple Mouser API keys via `MOUSER_API_KEYS`, stored the second key as a backup in `.env`, rotated automatically to the next key on Mouser quota/rate-limit responses, and reduced wasted requests further by consulting saved resolutions before the full multi-pass lookup and by skipping redundant exact passes for qualifier-style part numbers.
-- Refreshed `.gitignore` so local secrets, Python caches, generated BOM outputs, generated docs, SQLite cache files, and macOS `.DS_Store` artifacts stay out of version control.
-- Added Digi-Key client ID and client secret support to the local `.env` workflow, documented the new variables in the env template and secret guide, and extended the secret registry so Digi-Key integration can consume them without hardcoding credentials.
-- Added a reusable `digikey_auth.py` module plus `scripts/digikey_account_lookup.py` for Digi-Key's one-time 3-legged `AssociatedAccounts` flow, documented the setup under `docs/guides/digikey-account-setup.md`, and verified the helper plus its parsing/env-update logic with targeted tests and a `--print-only` CLI smoke run.
-- Added `digikey.py` as a locale-aware Product Information V4 client with 2-legged token caching, account/customer header fallback, and normalized `pricingbyquantity` parsing; added `scripts/digikey_probe.py`; set the default Digi-Key locale to Germany/EUR (`DE` / `EUR` / `de`); and verified live production pricing for `P5555-ND` at quantity 100 with a returned EUR total of `59.76` and header mode `account_id`.
-- Integrated Digi-Key into the normal BOM pricing pipeline by introducing generic distributor offers in `models.py`, letting the CLI compare Mouser and Digi-Key results per line, selecting the cheapest priced offer that does not require manual review, and updating reports/summaries to show the selected distributor instead of assuming Mouser.
-- Fixed `.env` precedence so explicit shell overrides win over the local `.env` file during ad-hoc runs, which restores true cold-cache BOM checks with temp cache/resolution files; also corrected the per-part progress suffix so `"[... cheapest]"` only appears when the selected distributor is actually the lowest-priced comparable offer.
-- Added a generated Sphinx API docs toolchain under `docs/` with `docs/generate_api_index.py`, made `make -C docs html` regenerate the API index and clear stale autosummary pages, and fixed the Sphinx config so generated API source pages are no longer excluded from the build.
-- Added overbuy-aware distributor pricing so Mouser and Digi-Key can prefer the next price break or full reel when that lowers actual spend, recorded purchased-versus-required quantities plus surplus in the normalized offer models, and shifted the final console/report summaries to emphasize per-part and per-unit cost instead of batch-total cost.
+- Completed a historical Digi-Key parity audit before continuing the rewrite.
+  The Go adapter preserves the useful Python-era fixes: OAuth token reuse with
+  expiry safety, locale normalization, account-scoped pricing, both account
+  and standard pricing groups, composite and cheaper-overbuy purchase plans,
+  strict manufacturer handling, conservative MPN handling, document links,
+  and normalized persistent caching. Added focused regression tests for
+  locale/account configuration, removal of the obsolete Customer-Id header,
+  cross-group cheaper-overbuy selection, early manufacturer mismatch
+  rejection, and the cache version that excludes legacy false-zero stock.
+- Kept the current Digi-Key account contract rather than restoring the old
+  `X-DIGIKEY-Customer-Id: 0` fallback. Digi-Key's November 2025 ProductSearch
+  changelog removed Customer-Id from the affected V4 endpoints, and the
+  current ProductDetails/PricingByQuantity documentation requires
+  `X-DIGIKEY-Account-Id` for two-legged OAuth.
+- Re-ran the real adapter after the audit. `providers check` succeeded in
+  documented `account_id` mode, and an uncached `TCAN1473CDRQ1` lookup used
+  three requests (OAuth, pricing, ProductDetails), returned exact EUR pricing,
+  the TI datasheet and Digi-Key product URL, and correctly verified 2,940 units
+  of cut-tape stock.
 
-## 2026-03-25
+## 2026-07-30
 
-- Added a central distributor-agnostic purchase optimizer in `optimizer.py` so Mouser, Digi-Key, and TI all normalize legal purchase families before supplier comparison, while still letting Mouser realize mixed plans such as reel-plus-remainder buys.
-- Added manufacturer-page fallback parsing in `manufacturer_packaging.py`, preferred embedded structured Mouser product-page data before visible-text scraping, and captured cache-backed live fixture snapshots for Mouser/manufacturer packaging regression tests under `tests/fixtures/`.
-- Integrated TI Store Inventory and Pricing API lookups in `ti.py`, normalized TI USD offers into the run-wide target currency through `fx.py`, and let TI direct compete in the final offer-selection path for TI-manufactured BOM lines.
-- Reworked the single-sheet CSV/Excel output into a buyer-facing order sheet with order-plan columns, shortage visibility, batch/reel counts, and stronger Excel ergonomics such as freeze panes and table formatting.
-- Added per-run stdout/stderr trace capture plus a cleaner live console layout that emphasizes source, order plan, unit price, and line total while pushing diagnostics into short note lines instead of overloaded suffixes.
-- Hardened AI reranking degradation handling so invalid OpenAI payloads, auth failures, rate limits, and transport errors cleanly fall back to deterministic resolution with one-shot notices instead of repeated raw warnings.
-- Cleaned the repository state by removing stale local artifacts, tightening ignore rules for Excel lock files, regenerating the API index, and re-verifying the full test suite before preparing the next commit.
-- Added a manufacturing-biased purchase-plan preference in `optimizer.py` so reel-heavy plans can beat all-cut-tape plans within a small configurable cost delta, and taught the TI adapter to synthesize full-reel plus cut-tape families from TI store packaging metadata when the store response exposes standard pack quantity and carrier options.
-- Expanded the persistent cache in `lookup_cache.py` beyond Mouser so Digi-Key and TI can reuse product/pricing responses across runs, and scoped the CLI `--mouser-delay` back to live Mouser traffic instead of sleeping after every TI or Digi-Key request.
-- Extended the persistent cache to Mouser product-page and manufacturer-page packaging fallbacks, and split paced Mouser traffic from auxiliary fallback fetches so `--mouser-delay` no longer fires after non-Mouser enrichment requests.
-- Added fail-closed NXP direct-store pricing in `nxp.py` for `NXP` / `Freescale` parts, including browser-backed public-store parsing, cached orderable/detail lookups, and runtime circuit breakers that disable NXP cleanly when page or payload structures drift.
-- Added surplus-aware cross-supplier offer scoring in `main.py` so supplier-driven overbuy can lose to a slightly more expensive competing source when the spare burden becomes material, while still preserving manufacturer-direct stores as authoritative validators of their own orderables.
-- Introduced explicit project versioning at `1.0.0.0`, added `python main.py --version`, refreshed the user/developer docs around NXP and manufacturer-direct fallback behavior, and prepared the repository for the first tagged release.
-- Refactored the codebase for clarity and maintainability: split `mouser.py` (2,583 → 1,370 lines) into three focused modules — `mouser_scoring.py` (matching, scoring, qualification rules) and `mouser_packaging.py` (packaging extraction from search API and product pages), with backward-compatible re-exports. Deduplicated `_extract_optional_int` and `_normalize_manufacturer_name` across modules into `manufacturer_packaging.py` as canonical owner. Added shared `packaging_kind_from_text()` to eliminate duplicated batch-kind matching in `report.py` and `optimizer.py`. Removed dead code (`price_all_parts`, `_paced_request_count`, `_ti_query_terms`) and their orphaned tests. Flattened the 5-level nested context-manager pyramid in `main.py:price_parts()` to a flat `ExitStack`. Simplified `PricedPart.apply_selected_offer()` from 28 explicit field copies to a field-tuple loop plus 3 special cases. All 262 tests pass; CLI smoke test verified.
-- Added Rich styled terminal output in `console.py` with a project-wide theme (`ok`, `review`, `error`, `part`, `price`, `dim`, `note`, `heading`). Replaced all `print()` calls in `main.py`, `mouser.py`, and `report.py` with Rich `console.print()` and `Text` objects. Used `soft_wrap=True` to prevent line-breaking in non-TTY contexts, preserving all 262 test assertions unchanged.
-- Built a full-screen Textual TUI in `tui/` that activates with `--interactive` on a TTY. The TUI shows a live-updating `DataTable` of parts being priced, a `CostPanel` with running totals and elapsed time, a `StatusBar` for the current operation, and a `ResolverModal` for interactive candidate selection.
-- Extracted `_price_single_part()` and `SinglePartResult` from the pricing loop in `main.py` so both the CLI and the TUI worker share the same pricing function. Added `resolver_callback` to `mouser.py:price_part()` so the TUI can intercept interactive resolution with a modal instead of the text-based prompt.
-- Designed the TUI threading model around `concurrent.futures.Future` via a `ResolverRendezvous` class. The worker thread blocks on `rendezvous.wait()` (Future.result), the TUI modal calls `rendezvous.resolve()` (Future.set_result), and app shutdown calls `rendezvous.cancel()` (Future.cancel) — all three paths wake the worker instantly via `Condition.notify_all()` with no polling loops. Iteration boundaries use `app.shutdown_event` (threading.Event) and rate-limit sleeps use `shutdown_event.wait(timeout=delay)` for immediate wakeup on quit.
-- Bumped version to `1.0.1.0`, added `textual>=0.50` to requirements.txt, updated documentation (interactive-resolution guide, README, CLAUDE.md architecture rules, API index) to cover the TUI, its keyboard shortcuts, and the threading architecture. All 262 tests pass.
+- Added `export ec-bom`: renders one validated design as a Eurocircuits
+  assembly BOM (semicolon-separated, CRLF, upload-ready column set
+  Item;Quantity;Designators;Manufacturer;MPN;Description;Value;Package;
+  Mounted;Comment). Credential-free, exactly one design per file,
+  never overwrites, JSON envelope reports absolute path, size, SHA-256,
+  and line count. The design schema gained optional `designators`,
+  `value`, `mounted`, and `comment` part fields (strict validation
+  extended; empty designators rejected). Capabilities advertise
+  `export ec-bom` and the `ec-bom-csv` artifact format; unit and
+  command-contract tests cover rendering (quoting, CRLF, mounted
+  default) and the overwrite refusal; `make check` passes. Verified
+  end-to-end against a real 91-line design.
+
+- Fixed the Digi-Key zero-stock defect (TODO provider-adapters entry): the
+  quantity-pricing endpoint reports `QuantityAvailable` 0 even for
+  well-stocked parts, so every lookup read false zero availability.
+  Confirmed live against TCAN1473CDRQ1 — pricing said 0 while
+  ProductDetails and digikey.com said 2,940 (cut tape, MOQ 1).
+- Stock truth now comes from ProductDetails: `ProductDocuments` became
+  `ProductInformation` (document links + product quantity + per-variation
+  `QuantityAvailableforPackageType` map), one fetch per lookup serves both
+  stock verification and document links. `applyStock` verifies every
+  normalized plan per SKU with leg aggregation; a missing variation
+  quantity is UNKNOWN (`stock_unknown`), never zero. The pricing
+  endpoint's `QuantityAvailable` is no longer consulted.
+- Fixtures now mirror the live endpoints (pricing always 0, details carry
+  variations); added `applyStock` unit coverage (aggregated legs,
+  shortage, unknown) and a resolver `stock_unknown` test. Bumped the
+  cache adapter version to `digikey-normalized-v2` so stale v1 entries
+  with wrong zero availability can never be served. `make check` passes;
+  live verification returns `priced` / `2940 available` with a selected
+  plan for the reference part.
+
+## 2026-07-29
+
+- Archived the complete Python implementation under `legacy/` while preserving
+  the Git repository, root `.env`, and project license.
+- Started the native Go rewrite at version `3.0.0-dev`.
+- Added a standard-library-first CLI with JSON-only machine output,
+  `capabilities --full`, provider configuration discovery, embedded schemas,
+  and strict design validation from files or stdin.
+- Added safe non-evaluating `.env` loading, typed contracts, tests, and a
+  host-native build helper.
+- Verified the foundation with `gofmt`, `shellcheck`, `go test ./...`,
+  `go vet ./...`, schema checks, stdin/file validation, and error-path smoke
+  tests.
+- Built a stripped, self-contained 2.1 MB macOS arm64 executable at
+  `bin/bom-builder`; it requires no Go or Python installation at runtime.
+
+## 2026-07-30
+
+- Raised the rewrite baseline to Go 1.25 and pinned build, test, race, and vet
+  workflows to the latest Go 1.25 patch (`go1.25.12`). Upgraded the pure-Go
+  SQLite driver from `modernc.org/sqlite v1.46.0` to the current stable
+  `v1.55.0`, retained its upstream-certified transitive dependency set, and
+  verified both the full application suite and an in-memory SQLite test with
+  the exact pinned toolchain.
+- Added a native versioned SQLite cache for normalized Mouser, Digi-Key, TI,
+  and NXP results. It uses WAL, bounded TTLs, adapter and market/account context
+  hashes, payload checksums, explicit corruption failures, owner-only database
+  permissions, and source-request provenance without storing credentials or raw
+  provider responses.
+- Integrated `prefer`, `refresh`, `only`, `offline`, and `off` cache policies
+  into lookup, BOM pricing, document discovery, and alternative sourcing.
+  Cache-only and offline modes do not initialize provider clients, so a cached
+  workflow needs neither live credentials nor an NXP browser.
+- Added machine-readable `cache status|list|verify|prune` commands and a public
+  cache schema. Pruning requires an exact preview token bound to the current
+  provider/key/payload set; inspection never emits stored provider payloads.
+- Added exact six-place fixed-point money; prices serialize as decimal strings
+  and mixed-currency totals fail closed.
+- Ported deterministic BOM aggregation and stock-aware single/mixed packaging
+  purchase-plan optimization.
+- Added the native Mouser v2 adapter with bounded retries, backup-key rotation,
+  sanitized failures, strict manufacturer/MPN matching, and review-required
+  non-exact candidates.
+- Added native `lookup`, `price`, and `providers check` commands with deadlines,
+  run metadata, request counts, safe partial results, and exit code `3`.
+- Preserved Mouser datasheet/product URLs and verified the adapter against the
+  configured live API: health succeeded, exact pricing succeeded, and the
+  three-line example returned two safe prices plus one explicit unresolved
+  line.
+- Added the native Digi-Key Product Information V4 adapter with two-legged
+  OAuth token reuse, required account and locale headers, bounded retries,
+  quota metadata, exact fixed-point quantity pricing, composite SKU plans, and
+  product/datasheet links.
+- Generalized `lookup` and `price` to query explicitly selected or automatically
+  discovered native providers. Every normalized offer is retained, and only
+  exact, stock-verified, common-currency plans participate in selection.
+- Extended the public run envelope and output schema with per-provider request
+  counts and multi-offer provenance.
+- Verified the configured live Mouser and Digi-Key APIs together: both health
+  checks passed, Digi-Key authentication used the documented account-ID mode,
+  a cross-provider lookup returned both offers, and an out-of-stock Digi-Key
+  result correctly remained an unselected shortage with working document links.
+- Added the native TI Store V2 adapter with client-credentials OAuth token
+  reuse, exact fixed-point price breaks, stock and order-limit enforcement,
+  lifecycle review, package metadata, product links, bounded retries, and
+  provider-specific applicability.
+- Removed the legacy TI runtime dependency on system `curl`: the production TI
+  edge accepts the native Go HTTP transport.
+- Live-verified TI health and an exact `TMP421AQDCNRQ1` lookup. Authentication,
+  real-time inventory, requested-currency pricing, lifecycle data, and a
+  stock-verified purchase plan all succeeded in two requests.
+- Added the native NXP Store adapter using dependency-free Chrome DevTools
+  Protocol transport over a private headless Chrome/Edge process. Structured
+  store responses are schema-checked; orderable-part matches, stock, price
+  breaks, MOQ, package multiples, and product links are normalized
+  conservatively.
+- Live-verified NXP discovery and health with `KW47B42ZB7AFTBT`. A base-device
+  lookup resolved to the orderable tray SKU, reported 940 units of stock, MOQ
+  1300, package multiple 260, and three USD price tiers; the optimizer correctly
+  refused to select a plan because the available stock could not satisfy MOQ.
+- Added native `documents list` and `documents fetch` commands. Link discovery
+  retains provider provenance and prioritizes manufacturer-hosted PDFs.
+  Downloads enforce HTTPS/public-network targets, safe redirects, a bounded
+  size, PDF signature validation, exclusive output creation, and SHA-256
+  artifact metadata.
+- Live-fetched and independently verified the 420,264-byte Yageo resistor
+  datasheet surfaced by Mouser; the CLI and system checksum both produced
+  `082584f002a340558f9afcc0189ccad51ec3d3d746829e900dd5b555d2c19180`.
+- Added built-in root and per-command help with copyable shell/agent examples;
+  help and version output no longer depend on loading project configuration.
+- Added the native `alternatives` command and an embedded strict request schema
+  for resistors, capacitors, and inductors. The deterministic engine fails
+  closed on missing critical fields and returns a field-by-field
+  equal/better/worse/unknown matrix with explicit rejected reasons.
+- Added stock-aware candidate sourcing and ranking. Electrically incompatible
+  candidates consume no provider requests; viable candidates retain all offer,
+  MOQ, packaging, stock, and exact-price provenance. Mixed currencies are not
+  compared, and every recommendation remains engineering-review-required.
+- Live-verified a Yageo 10 kOhm 0402 baseline against a proposed Vishay
+  `CRCW040210K0FKED` candidate. Mouser and Digi-Key sourcing ran in seven total
+  requests; Mouser reported over 6.3 million units and a safe EUR 1.40 plan for
+  100 pieces. The command returned the candidate for review rather than
+  automatically approving it.

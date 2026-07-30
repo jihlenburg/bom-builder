@@ -1,0 +1,10 @@
+{
+  "design": "NINAcamp rfix2",
+  "version": "rev-C-fix2",
+  "parts": [
+    { "part_number": "RT0603FRE07499R", "manufacturer": "Yageo", "quantity": 4, "reference": "item65 499R thin 1pct", "description": "499 Ohm 0603 thin-film 1% 25ppm resistor AEC-Q200 automotive", "package": "0603" },
+    { "part_number": "ERA-3AEB4990V", "manufacturer": "Panasonic", "quantity": 4, "reference": "item65 499R thin 0.1pct", "description": "499 Ohm 0603 thin-film 0.1% 25ppm resistor AEC-Q200 automotive", "package": "0603" },
+    { "part_number": "RG1608P-501-B-T5", "manufacturer": "Susumu", "quantity": 4, "reference": "item65 exact 500R thin", "description": "500 Ohm 0603 thin-film 0.1% precision resistor AEC-Q200 automotive", "package": "0603" },
+    { "part_number": "CRCW0603220KFKEA", "manufacturer": "Vishay", "quantity": 2, "reference": "item69 220k resource", "description": "220k 0603 1% thick-film resistor AEC-Q200 automotive", "package": "0603" }
+  ]
+}

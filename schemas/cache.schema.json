@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jihlenburg/bom-builder/schemas/cache.schema.json",
+  "title": "BOM Builder cache command output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "exit_code",
+    "command",
+    "version",
+    "cache",
+    "warnings",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "status": {"enum": ["complete", "failed"]},
+    "exit_code": {"enum": [0, 2, 5]},
+    "command": {
+      "enum": ["cache status", "cache list", "cache verify", "cache prune"]
+    },
+    "version": {"type": "string"},
+    "cache": {"$ref": "#/$defs/cacheStatus"},
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/cacheEntry"}
+    },
+    "verification": {"$ref": "#/$defs/verification"},
+    "prune": {"$ref": "#/$defs/prune"},
+    "warnings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/issue"}
+    },
+    "errors": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/issue"}
+    }
+  },
+  "$defs": {
+    "cacheStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "exists",
+        "schema_version",
+        "entry_count",
+        "fresh_count",
+        "stale_count",
+        "size_bytes"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "exists": {"type": "boolean"},
+        "schema_version": {"type": "integer", "minimum": 0},
+        "entry_count": {"type": "integer", "minimum": 0},
+        "fresh_count": {"type": "integer", "minimum": 0},
+        "stale_count": {"type": "integer", "minimum": 0},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "oldest_entry": {"type": "string", "format": "date-time"},
+        "newest_entry": {"type": "string", "format": "date-time"}
+      }
+    },
+    "cacheEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "key",
+        "part_number",
+        "manufacturer",
+        "required_quantity",
+        "result_status",
+        "adapter_version",
+        "fetched_at",
+        "expires_at",
+        "source_requests",
+        "stale"
+      ],
+      "properties": {
+        "provider": {"enum": ["mouser", "digikey", "ti", "nxp"]},
+        "key": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "part_number": {"type": "string", "minLength": 1},
+        "manufacturer": {"type": "string", "minLength": 1},
+        "required_quantity": {"type": "integer", "minimum": 1},
+        "result_status": {
+          "enum": [
+            "priced",
+            "shortage",
+            "stock_unknown",
+            "unavailable",
+            "review",
+            "not_found",
+            "not_applicable"
+          ]
+        },
+        "adapter_version": {"type": "string", "minLength": 1},
+        "fetched_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "source_requests": {"type": "integer", "minimum": 0},
+        "stale": {"type": "boolean"}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "integrity_check",
+        "checked_entries",
+        "invalid_entries",
+        "issues"
+      ],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "integrity_check": {"type": "string"},
+        "checked_entries": {"type": "integer", "minimum": 0},
+        "invalid_entries": {"type": "integer", "minimum": 0},
+        "issues": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "prune": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "matched_count",
+        "applied",
+        "deleted_count"
+      ],
+      "properties": {
+        "scope": {"enum": ["expired", "all"]},
+        "matched_count": {"type": "integer", "minimum": 0},
+        "apply_token": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "applied": {"type": "boolean"},
+        "deleted_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "details": {"type": "object"}
+      }
+    }
+  }
+}
