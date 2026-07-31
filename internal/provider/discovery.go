@@ -17,6 +17,7 @@ func Discover() contract.ProviderDiscoveryEnvelope {
 		digiKeyCapability(),
 		tiCapability(),
 		nxpCapability(),
+		microchipCapability(),
 		serviceCapability("ecb", true, contract.ProviderDetails{
 			Implementation:         "pending",
 			AuthenticationRequired: boolPointer(false),
@@ -116,6 +117,25 @@ func nxpCapability() contract.ProviderCapability {
 		capability.Status = "ready"
 	} else {
 		capability.Status = "unconfigured"
+	}
+	return capability
+}
+
+func microchipCapability() contract.ProviderCapability {
+	// The public Product API needs no credentials, so the provider is
+	// always configured. It supplies availability and lifecycle
+	// EVIDENCE only (no pricing) and is selected explicitly, never by
+	// `--providers auto`.
+	capability := contract.ProviderCapability{
+		Name:        "microchip",
+		Kind:        "manufacturer",
+		Implemented: true,
+		Configured:  true,
+		Status:      "ready",
+		Details: contract.ProviderDetails{
+			Implementation:         "native_go",
+			AuthenticationRequired: boolPointer(false),
+		},
 	}
 	return capability
 }

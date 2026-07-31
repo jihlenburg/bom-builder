@@ -25,6 +25,7 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/procurement"
 	"github.com/jihlenburg/bom-builder/internal/provider"
 	"github.com/jihlenburg/bom-builder/internal/provider/digikey"
+	"github.com/jihlenburg/bom-builder/internal/provider/microchip"
 	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
 	"github.com/jihlenburg/bom-builder/internal/provider/nxp"
 	"github.com/jihlenburg/bom-builder/internal/provider/ti"
@@ -41,13 +42,16 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if topic, requested := helpRequest(args); requested {
 		return runHelp(topic, stdout)
 	}
-	if err := config.LoadDotEnv(".env"); err != nil {
-		return emitError(stdout, "startup", "CONFIG_ERROR", err.Error(), contract.ExitInternal, false)
-	}
 	if len(args) == 0 {
 		return emitError(stdout, "", "COMMAND_REQUIRED", "a command is required", contract.ExitInput, false)
 	}
 	command := args[0]
+	// A broken checkout-local .env is user-authored input, not an internal
+	// failure: report it under the invoked command with the input exit
+	// code so agents can tell "fix your .env" from "the tool broke".
+	if err := config.LoadDotEnv(".env"); err != nil {
+		return emitError(stdout, command, "CONFIG_ERROR", err.Error(), contract.ExitInput, false)
+	}
 	switch command {
 	case "capabilities":
 		return runCapabilities(args[1:], stdout)
@@ -132,6 +136,7 @@ func runCapabilities(args []string, stdout io.Writer) int {
 		},
 		Distributors:            []string{"mouser", "digikey", "ti", "nxp"},
 		ImplementedDistributors: []string{"mouser", "digikey", "ti", "nxp"},
+		Manufacturers:           []string{"microchip"},
 		Services:                []string{"ecb", "openai"},
 		ArtifactFormats:         []string{"json", "pdf", "ec-bom-csv"},
 		Features: contract.Features{
@@ -256,6 +261,13 @@ func runValidate(args []string, stdin io.Reader, stdout io.Writer) int {
 	if len(remaining) == 0 {
 		return emitError(stdout, "validate", "DESIGN_REQUIRED", "at least one design source is required", contract.ExitInput, pretty)
 	}
+	for _, source := range remaining {
+		// Same guard as price: a flag-shaped leftover must surface as
+		// a usage error, not be opened as a file named "--bogus".
+		if strings.HasPrefix(source, "--") {
+			return emitUnexpected(stdout, "validate", []string{source}, pretty)
+		}
+	}
 	designs, err := design.LoadSources(remaining, stdin)
 	if err != nil {
 		return emitError(stdout, "validate", "INVALID_INPUT", err.Error(), contract.ExitInput, pretty)
@@ -312,6 +324,12 @@ func runLookup(args []string, stdout io.Writer) int {
 			pretty,
 		)
 	}
+	if strings.HasPrefix(remaining[0], "--") {
+		// A flag-shaped leftover is a mistyped or unknown option, never
+		// a part number; querying providers for it would burn a
+		// request and report a misleading not_found.
+		return emitUnexpected(stdout, "lookup", []string{remaining[0]}, pretty)
+	}
 	if length := len(strings.TrimSpace(remaining[0])); length < 3 || length > 40 {
 		return emitError(
 			stdout,
@@ -360,6 +378,7 @@ func runLookup(args []string, stdout io.Writer) int {
 	return executePricing(
 		"lookup",
 		[]procurement.Demand{demand},
+		nil,
 		1,
 		0,
 		deadline,
@@ -447,13 +466,14 @@ func runPrice(args []string, stdin io.Reader, stdout io.Writer) int {
 	if err != nil {
 		return emitError(stdout, "price", "INVALID_INPUT", err.Error(), contract.ExitInput, pretty)
 	}
-	demands, err := bom.Aggregate(designs, units, attrition)
+	demands, aggregationWarnings, err := bom.Aggregate(designs, units, attrition)
 	if err != nil {
 		return emitError(stdout, "price", "INVALID_INPUT", err.Error(), contract.ExitInput, pretty)
 	}
 	return executePricing(
 		"price",
 		demands,
+		aggregationWarnings,
 		units,
 		attrition,
 		deadline,
@@ -484,6 +504,7 @@ func (setupError *providerRuntimeSetupError) Error() string {
 func executePricing(
 	command string,
 	demands []procurement.Demand,
+	aggregationWarnings []contract.Issue,
 	units int,
 	attrition money.Decimal,
 	deadline time.Duration,
@@ -531,7 +552,7 @@ func executePricing(
 		Attrition: attrition,
 		Summary:   result.Summary,
 		Parts:     result.Parts,
-		Warnings:  result.Warnings,
+		Warnings:  append(aggregationWarnings, result.Warnings...),
 		Errors:    result.Errors,
 	}
 	return emitJSONWithExit(stdout, envelope, pretty, result.ExitCode)
@@ -554,7 +575,7 @@ func newProviderRuntimes(
 			cacheConfig.Policy == lookupcache.PolicyOffline
 		if cacheOnly {
 			switch name {
-			case "mouser", "digikey", "ti", "nxp":
+			case "mouser", "digikey", "ti", "nxp", "microchip":
 				runtime = providerRuntime{
 					name:         name,
 					requestCount: func() int { return 0 },
@@ -618,6 +639,26 @@ func newProviderRuntimes(
 					}
 				}
 				resolver, err := ti.NewResolver(client)
+				if err != nil {
+					closeProviderRuntimeResources(runtimes, cacheSession)
+					return nil, nil, &providerRuntimeSetupError{
+						provider: name, kind: "internal", cause: err,
+					}
+				}
+				runtime = providerRuntime{
+					name:         name,
+					resolver:     resolver,
+					requestCount: client.RequestCount,
+				}
+			case "microchip":
+				client, err := microchip.NewFromEnvironment()
+				if err != nil {
+					closeProviderRuntimeResources(runtimes, cacheSession)
+					return nil, nil, &providerRuntimeSetupError{
+						provider: name, kind: "configuration", cause: err,
+					}
+				}
+				resolver, err := microchip.NewResolver(client)
 				if err != nil {
 					closeProviderRuntimeResources(runtimes, cacheSession)
 					return nil, nil, &providerRuntimeSetupError{
@@ -928,7 +969,8 @@ func resolveProviderSelection(
 		return nil, fmt.Errorf("at least one provider is required")
 	}
 	for _, name := range providers {
-		if name != "mouser" && name != "digikey" && name != "ti" && name != "nxp" {
+		if name != "mouser" && name != "digikey" && name != "ti" &&
+			name != "nxp" && name != "microchip" {
 			return nil, fmt.Errorf("provider %s has no native pricing adapter", name)
 		}
 	}

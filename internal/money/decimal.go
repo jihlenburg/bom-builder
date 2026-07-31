@@ -23,6 +23,11 @@ const (
 type Decimal int64
 
 // Parse accepts provider price text in common dot- or comma-decimal formats.
+// Inputs that cannot be normalized unambiguously are explicit errors, never
+// guesses: digit-free text, letters embedded between digit runs ("1e5",
+// "2 for 1.50"), and a lone comma followed by exactly three digits (US
+// thousands vs EU decimal) are all rejected so a malformed provider price can
+// never become a plausible wrong number.
 func Parse(input string) (Decimal, error) {
 	normalized, err := normalize(input)
 	if err != nil {
@@ -50,7 +55,10 @@ func Parse(input string) (Decimal, error) {
 			return 0, fmt.Errorf("parse fractional price: %w", err)
 		}
 	}
-	if wholeValue > math.MaxInt64/Scale {
+	// The fractional micros count toward the MaxInt64 bound too; checking
+	// only the whole part would let wholeValue*Scale+fractionValue wrap
+	// into a negative Decimal with a nil error.
+	if wholeValue > (math.MaxInt64-fractionValue)/Scale {
 		return 0, errors.New("money value is too large")
 	}
 	scaled := wholeValue*Scale + fractionValue
@@ -76,12 +84,23 @@ func (decimal Decimal) Micros() int64 {
 	return int64(decimal)
 }
 
-// String renders exactly six fractional places.
+// String renders exactly six fractional places. Decimal is documented
+// non-negative, but the type is a plain int64 any caller can construct, so a
+// broken invariant must still render readably ("-1.500000") rather than
+// emitting garbage from a negative remainder ("%06d" of -5 is "-00005").
 func (decimal Decimal) String() string {
 	value := int64(decimal)
+	sign := ""
 	whole := value / Scale
 	fraction := value % Scale
-	return fmt.Sprintf("%d.%06d", whole, fraction)
+	if value < 0 {
+		// Both parts negate safely: |whole| <= 9223372036854 and
+		// |fraction| < Scale even for math.MinInt64.
+		sign = "-"
+		whole = -whole
+		fraction = -fraction
+	}
+	return fmt.Sprintf("%s%d.%06d", sign, whole, fraction)
 }
 
 // MarshalJSON encodes a decimal as a quoted exact value.
@@ -154,9 +173,19 @@ func normalize(input string) (string, error) {
 	}
 
 	var numeric bytes.Buffer
+	seenDigit := false
+	textAfterDigit := false
 	for _, character := range trimmed {
 		switch {
 		case unicode.IsDigit(character):
+			if textAfterDigit {
+				// Letters between digit runs ("1e5", "2 for
+				// 1.50") mean this is not one plain price;
+				// concatenating the digit runs would produce a
+				// plausible but wrong number.
+				return "", fmt.Errorf("money value %q mixes text and digits", input)
+			}
+			seenDigit = true
 			numeric.WriteRune(character)
 		case character == '.' || character == ',':
 			numeric.WriteRune(character)
@@ -165,17 +194,27 @@ func normalize(input string) (string, error) {
 				return "", errors.New("invalid sign in money value")
 			}
 			numeric.WriteRune(character)
-		case unicode.IsSpace(character), unicode.IsLetter(character):
+		case unicode.IsLetter(character):
+			// Leading and trailing currency words ("EUR 12.34",
+			// "12,34 EUR") are tolerated; only letters between
+			// digits are fatal, tracked above.
+			if seenDigit {
+				textAfterDigit = true
+			}
+			continue
+		case unicode.IsSpace(character):
 			continue
 		default:
 			// Currency symbols and grouping apostrophes are ignored.
 			continue
 		}
 	}
-	value := numeric.String()
-	if value == "" || value == "+" || value == "-" {
+	// Separator-only survivors such as "." or "€," must fail loudly here:
+	// letting them through would parse as a silent zero price downstream.
+	if !seenDigit {
 		return "", fmt.Errorf("money value %q contains no number", input)
 	}
+	value := numeric.String()
 	if strings.HasPrefix(value, "-") {
 		return "", errors.New("money cannot be negative")
 	}
@@ -205,8 +244,24 @@ func normalize(input string) (string, error) {
 		if strings.Count(value, ",") > 1 {
 			return "", fmt.Errorf("invalid money value %q", input)
 		}
-		value = strings.ReplaceAll(value[:lastComma], ",", "") + "." + value[lastComma+1:]
+		whole, fraction := value[:lastComma], value[lastComma+1:]
+		// A lone comma with exactly three trailing digits reads as US
+		// grouping ("$1,234" = 1234) or as an EU decimal ("1,234" EUR
+		// = 1.234) with nothing in the text to break the tie — a
+		// silent choice would be wrong by 1000x for one side. Failed
+		// normalization is an explicit state, so refuse to guess. A
+		// "0" (or empty) whole part cannot be grouping, which keeps
+		// sub-unit prices like "0,045 €" parsing; a second separator
+		// or a 1-2/4+ digit fraction is likewise unambiguous.
+		if len(fraction) == 3 && whole != "" && whole != "0" {
+			return "", fmt.Errorf("ambiguous money value %q: lone comma may be thousands or decimal separator", input)
+		}
+		value = whole + "." + fraction
 	case lastDot >= 0:
+		// A lone dot is kept as the decimal separator: dot-decimal is
+		// the machine format provider payloads use, and 3-place unit
+		// prices ("0.045", "1.234") are routine in electronics
+		// pricing, so the EU-thousands reading is not applied here.
 		if strings.Count(value, ".") > 1 {
 			return "", fmt.Errorf("invalid money value %q", input)
 		}

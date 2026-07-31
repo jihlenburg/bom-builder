@@ -2,7 +2,12 @@ package schemas
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/jihlenburg/bom-builder/internal/contract"
 )
 
 func TestEmbeddedSchemasAreValid(t *testing.T) {
@@ -28,6 +33,161 @@ func TestBundleContainsAllContracts(t *testing.T) {
 		len(bundle.Output) == 0 ||
 		len(bundle.Providers) == 0 {
 		t.Fatal("Bundle() omitted a schema")
+	}
+}
+
+func TestOutputSchemaDescribesExportArtifact(t *testing.T) {
+	t.Parallel()
+	document, err := Get("output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(document, &schema); err != nil {
+		t.Fatal(err)
+	}
+	definitions := schema["$defs"].(map[string]any)
+	exportArtifact, ok := definitions["exportArtifact"].(map[string]any)
+	if !ok {
+		t.Fatal("output schema is missing $defs/exportArtifact")
+	}
+
+	// The def must describe exactly the wire fields contract.ExportArtifact
+	// emits; export output failing its own published schema is contract
+	// drift.
+	expected := map[string]bool{}
+	artifactType := reflect.TypeOf(contract.ExportArtifact{})
+	for index := range artifactType.NumField() {
+		tag := strings.Split(artifactType.Field(index).Tag.Get("json"), ",")[0]
+		expected[tag] = true
+	}
+	required := map[string]bool{}
+	for _, name := range exportArtifact["required"].([]any) {
+		required[name.(string)] = true
+	}
+	properties, _ := exportArtifact["properties"].(map[string]any)
+	for tag := range expected {
+		if !required[tag] {
+			t.Errorf("exportArtifact.required is missing %q", tag)
+		}
+		if _, described := properties[tag]; !described {
+			t.Errorf("exportArtifact.properties is missing %q", tag)
+		}
+	}
+	for name := range required {
+		if !expected[name] {
+			t.Errorf("exportArtifact.required lists %q, which ExportArtifact never emits", name)
+		}
+	}
+
+	// The envelope's artifact slot is shared by documents fetch and export;
+	// it must admit both artifact shapes.
+	artifact := schema["properties"].(map[string]any)["artifact"].(map[string]any)
+	branches, ok := artifact["oneOf"].([]any)
+	if !ok {
+		t.Fatalf("envelope artifact must be a oneOf of artifact kinds, got %#v", artifact)
+	}
+	references := map[string]bool{}
+	for _, branch := range branches {
+		if ref, found := branch.(map[string]any)["$ref"].(string); found {
+			references[ref] = true
+		}
+	}
+	for _, want := range []string{"#/$defs/documentArtifact", "#/$defs/exportArtifact"} {
+		if !references[want] {
+			t.Errorf("envelope artifact oneOf is missing %s", want)
+		}
+	}
+}
+
+func TestSchemasDescribeEveryRequiredField(t *testing.T) {
+	t.Parallel()
+	// A schema object that lists a field in "required" but omits it from
+	// "properties" demands data it never describes; consumers reading the
+	// contract get no type information for a mandatory field.
+	var walk func(t *testing.T, path string, node any)
+	walk = func(t *testing.T, path string, node any) {
+		switch typed := node.(type) {
+		case map[string]any:
+			properties, hasProperties := typed["properties"].(map[string]any)
+			required, hasRequired := typed["required"].([]any)
+			if hasProperties && hasRequired {
+				for _, entry := range required {
+					name := entry.(string)
+					if _, described := properties[name]; !described {
+						t.Errorf("%s requires %q but does not describe it", path, name)
+					}
+				}
+			}
+			for key, child := range typed {
+				walk(t, path+"/"+key, child)
+			}
+		case []any:
+			for index, child := range typed {
+				walk(t, fmt.Sprintf("%s[%d]", path, index), child)
+			}
+		}
+	}
+	for _, target := range []string{"input", "alternatives", "cache", "output", "providers"} {
+		document, err := Get(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema any
+		if err := json.Unmarshal(document, &schema); err != nil {
+			t.Fatal(err)
+		}
+		walk(t, target, schema)
+	}
+}
+
+func TestInputSchemaDescribesAllAcceptedShapes(t *testing.T) {
+	t.Parallel()
+	// The design loader accepts a single design object, a top-level array
+	// of designs, and a {"designs": [...]} wrapper; the published schema
+	// must describe all three or agents driving the CLI from `schema
+	// input` will reject documents the CLI accepts.
+	document, err := Get("input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(document, &schema); err != nil {
+		t.Fatal(err)
+	}
+	definitions, _ := schema["$defs"].(map[string]any)
+	design, ok := definitions["design"].(map[string]any)
+	if !ok {
+		t.Fatal("input schema is missing $defs/design")
+	}
+	requiredNames := map[string]bool{}
+	for _, name := range design["required"].([]any) {
+		requiredNames[name.(string)] = true
+	}
+	if !requiredNames["design"] || !requiredNames["parts"] {
+		t.Fatalf("design def must require design and parts, got %v", design["required"])
+	}
+
+	branches, ok := schema["oneOf"].([]any)
+	if !ok || len(branches) != 3 {
+		t.Fatalf("input schema must offer the three accepted document shapes, got %#v", schema["oneOf"])
+	}
+	var hasSingle, hasArray, hasWrapper bool
+	for _, branch := range branches {
+		typed := branch.(map[string]any)
+		switch {
+		case typed["$ref"] == "#/$defs/design":
+			hasSingle = true
+		case typed["type"] == "array":
+			hasArray = true
+		default:
+			if properties, found := typed["properties"].(map[string]any); found {
+				_, hasWrapper = properties["designs"]
+			}
+		}
+	}
+	if !hasSingle || !hasArray || !hasWrapper {
+		t.Fatalf("input schema shapes incomplete: single=%v array=%v wrapper=%v", hasSingle, hasArray, hasWrapper)
 	}
 }
 

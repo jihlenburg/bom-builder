@@ -176,7 +176,12 @@ func supportsManufacturer(manufacturer string) bool {
 	for _, word := range words {
 		switch word {
 		case "inc", "incorporated", "corp", "corporation", "company", "co",
-			"ltd", "limited", "semiconductor", "semiconductors":
+			"ltd", "limited", "semiconductor", "semiconductors",
+			// Region and legal-entity designators from distributor
+			// catalogs: "NXP USA Inc.", "NXP Semiconductors N.V.",
+			// "NXP B.V." ("n"/"v"/"b" arise from splitting the
+			// dotted abbreviations), "GmbH" from German listings.
+			"usa", "nv", "bv", "n", "v", "b", "gmbh":
 			continue
 		default:
 			filtered = append(filtered, word)

@@ -83,6 +83,12 @@ func NewSession(configuration Config) (*Session, error) {
 }
 
 // Resolver wraps one provider resolver with the session policy.
+//
+// The returned resolver's Lookup must not be called concurrently for the
+// same provider: source-request accounting diffs the shared requestCount
+// counter around each network lookup, so overlapping lookups would attribute
+// each other's HTTP requests. The CLI's sourcing layer resolves lines
+// strictly sequentially, which upholds this contract today.
 func (session *Session) Resolver(
 	provider string,
 	network sourcing.Resolver,

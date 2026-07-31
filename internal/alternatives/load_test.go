@@ -103,3 +103,32 @@ func TestLoadRejectsDuplicateCandidate(t *testing.T) {
 		t.Fatal("expected duplicate error")
 	}
 }
+
+func TestValidatePartReportsDeterministicFieldOnMultipleErrors(t *testing.T) {
+	t.Parallel()
+	// With two invalid numeric fields, the reported field must not depend
+	// on map iteration order: nondeterministic error text breaks golden
+	// tests and the project's deterministic-output rule.
+	first := ""
+	for run := 0; run < 30; run++ {
+		bad := "not-a-number"
+		part := PartSpec{
+			PartNumber:       "ABC123",
+			Manufacturer:     "Maker",
+			ResistanceOhms:   &bad,
+			TolerancePercent: &bad,
+		}
+		err := validatePart(&part, "original", "resistor", true)
+		if err == nil {
+			t.Fatal("expected validation error")
+		}
+		if !strings.Contains(err.Error(), "resistance_ohms") {
+			t.Fatalf("run %d: expected the declaration-first field, got %v", run, err)
+		}
+		if first == "" {
+			first = err.Error()
+		} else if err.Error() != first {
+			t.Fatalf("run %d: error changed from %q to %q", run, first, err.Error())
+		}
+	}
+}

@@ -2,6 +2,83 @@
 
 ## 2026-07-31
 
+- Added the `microchip` provider: a credential-free availability/lifecycle
+  EVIDENCE adapter over Microchip's public Product API (Partner Data
+  Exchange). Offers carry factory-direct stock, lead time, lifecycle
+  status, MOQ/order-multiple, datasheet link, and a microchipDIRECT
+  product URL — but no pricing, so they are always review-required and
+  can never become a selected plan (statuses: review with
+  MANUFACTURER_EVIDENCE_ONLY or LIFECYCLE_WARNING, shortage,
+  stock_unknown, not_found; non-Microchip/Atmel demands are
+  not_applicable). Unparseable stringly-typed quantities stay unknown,
+  never zero (the Digi-Key lesson applied at design time). Base-part
+  fallback query with strict exact-match filtering refuses to silently
+  pick a variant. Wired end to end: provider kind "manufacturer"
+  (schema enum extended, capabilities gained a `manufacturers` list),
+  explicit selection only (never `--providers auto`), lookup-cache
+  adapter version `microchip-normalized-v1` with a products-URL context
+  hash, endpoint override restricted from `.env` like every other
+  endpoint key, live health check, and README/help documentation.
+  Fixture-based unit, resolver, and CLI-contract tests; `make check`
+  passes. Live-verified: health ok (606 ms, 15 catalog records) and
+  `lookup DSPIC33AK512MPS506-E/PT --providers microchip` returns
+  review/MANUFACTURER_EVIDENCE_ONLY with 960 in stock, REL, 6-week
+  lead, MOQ 1, multiple 160 — matching the manual microchipDIRECT
+  check and the prior raw-API probe exactly.
+
+- Ran a full four-slice code review of the Go codebase at `a9e6b9d` (CLI +
+  contract, provider adapters, pricing/sourcing core, cache + config), with
+  all Critical findings independently re-verified against source. Baseline
+  `make check` green. Results: three verified Critical defects (`money.Parse`
+  fraction-overflow wrap to negative, digit-free input parsing as zero price,
+  `export ec-bom` artifact failing the published output schema), ~20 Important
+  findings concentrated in the NXP browser adapter's failure model and money
+  text normalization, plus consistency and test-coverage gaps. Full ranked
+  findings with file:line references and a suggested fix order recorded in
+  `CODE_REVIEW_2026-07-31.md`.
+- Remediated the review's fix-order head with strict TDD (failing test first
+  for every fix): `money.Parse` no longer wraps past MaxInt64 into a negative
+  Decimal, no longer accepts digit-free input as a zero price, and now rejects
+  letters between digit runs ("1e5") and ambiguous lone-comma thousands
+  ("$1,234") as explicit errors; `String()` renders broken-invariant negative
+  values readably. The output schema gained an `exportArtifact` def (export
+  envelopes now validate), the missing `demand`/`pricing_strategy`/`order_plan`
+  property descriptions, and the input schema now describes all three accepted
+  document shapes while the loader rejects empty array/wrapper documents. The
+  NXP parser passes string prices to `money.Parse` verbatim (EU "1.234,56" was
+  silently mispriced 1000x) and accepts "NXP USA Inc."/"N.V."/"B.V."
+  spellings; the Mouser resolver no longer squashes shortage/stock_unknown/
+  unavailable into a bare review status on loose matches; the lookup cache's
+  `Put` now round-trips every candidate row through `decodeRow` and refuses
+  entries the read path would reject, closing the self-poisoning path. A new
+  schema meta-test enforces required⊆properties across all five contracts and
+  a new `store_test.go` starts store-level coverage. `make check` (unit, race,
+  vet, build) passes; remaining findings tracked in `TODO.md`.
+- Completed the remainder of the review's Important tier, all TDD. NXP browser
+  adapter failure model: transient timeouts now fail only their lookup (run-
+  level disable is reserved for confirmed schema drift), a dead Chrome process
+  is dropped and relaunched on the next lookup, the response body is fetched
+  only after `Network.loadingFinished` (closing the "No data found for
+  resource" race), and Search/PartDetail are serialized over the single-
+  consumer CDP transport — all proven against a new scripted fake-browser
+  harness driving the real transport code. Established the `.env` trust
+  model: a checkout-local `.env` may supply credentials and preferences but
+  may not introduce endpoint URLs, the NXP browser path, or the cache DB path
+  (loud refusal naming the key; inert when the operator already exported the
+  override); malformed `.env` files now exit 2 under the invoked command,
+  lowercase keys parse, a UTF-8 BOM is stripped, and unbalanced quotes are
+  explicit errors. The optimizer refuses cross-currency plan comparison; the
+  sourcing summary counts unknown statuses as INTERNAL_CONTRACT_ERROR and the
+  fallback path strips leaked SelectedPlans; aggregation emits
+  AGGREGATION_METADATA_CONFLICT warnings and fills empty metadata; lookup,
+  validate, documents list, and alternatives reject flag-shaped positionals;
+  alternatives validation errors are deterministic; cache session pragmas ride
+  in the DSN so replacement connections keep busy_timeout, and CacheStatus
+  reports the database's actual user_version. Added provider retry/auth tests
+  (Digi-Key 401-refresh, 429/5xx backoff, 8 MB body cap; Mouser 429 backoff;
+  TI 401-refresh) and made sanitizer truncation UTF-8-safe in all three HTTP
+  adapters. `make check` passes; the built binary was smoke-tested against
+  the new flag guard and `.env` refusal.
 - Completed a historical Digi-Key parity audit before continuing the rewrite.
   The Go adapter preserves the useful Python-era fixes: OAuth token reuse with
   expiry safety, locale normalization, account-scoped pricing, both account

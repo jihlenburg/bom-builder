@@ -359,7 +359,9 @@ func (client *Client) sanitizeMessage(message string) string {
 		message = strings.ReplaceAll(message, key, "[REDACTED]")
 	}
 	if len(message) > 300 {
-		message = message[:300]
+		// The byte cut may split a multi-byte rune; scrub the torn
+		// tail so JSON error fields never carry invalid UTF-8.
+		message = strings.ToValidUTF8(message[:300], "")
 	}
 	return message
 }

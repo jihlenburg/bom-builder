@@ -464,7 +464,9 @@ func (client *Client) sanitize(message string) string {
 		message = "provider rejected the request"
 	}
 	if len(message) > 300 {
-		message = message[:300]
+		// The byte cut may split a multi-byte rune; scrub the torn
+		// tail so JSON error fields never carry invalid UTF-8.
+		message = strings.ToValidUTF8(message[:300], "")
 	}
 	return message
 }

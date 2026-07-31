@@ -93,6 +93,8 @@ func AdapterVersion(provider string) string {
 		return "ti-normalized-v1"
 	case "nxp":
 		return "nxp-normalized-v1"
+	case "microchip":
+		return "microchip-normalized-v1"
 	default:
 		return "unknown-normalized-v1"
 	}
@@ -118,6 +120,8 @@ func ProviderContextHash(provider string) string {
 	case "nxp":
 		values["search_url"] = envValue("BOM_BUILDER_NXP_SEARCH_URL")
 		values["part_url"] = envValue("BOM_BUILDER_NXP_PART_URL")
+	case "microchip":
+		values["products_url"] = envValue("BOM_BUILDER_MICROCHIP_PRODUCTS_URL")
 		values["currency"] = envDefault("NXP_STORE_CURRENCY", "USD")
 	}
 	keys := make([]string, 0, len(values))

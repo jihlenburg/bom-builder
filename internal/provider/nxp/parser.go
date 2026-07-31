@@ -210,7 +210,11 @@ func metadataNumber(metadata map[string]any, key string) json.Number {
 	case json.Number:
 		return typed
 	case string:
-		return json.Number(strings.ReplaceAll(strings.TrimSpace(typed), ",", ""))
+		// The raw text is preserved verbatim: money.Parse handles the
+		// locale work, and pre-stripping commas here would turn an EU
+		// "1.234,56" into "1.23456" — a silent 1000x price error.
+		// Integer consumers strip their own grouping separators.
+		return json.Number(strings.TrimSpace(typed))
 	default:
 		return json.Number(toString(typed))
 	}
@@ -221,7 +225,10 @@ func metadataIntPointer(metadata map[string]any, key string) *int {
 	if number == "" {
 		return nil
 	}
-	value, err := strconv.ParseInt(number.String(), 10, 32)
+	// Integer counts such as stock_quantity may arrive US-grouped
+	// ("4,310"); commas are unambiguous grouping separators for integers,
+	// unlike in price text where they may mark EU decimals.
+	value, err := strconv.ParseInt(strings.ReplaceAll(number.String(), ",", ""), 10, 32)
 	if err != nil || value < 0 {
 		return nil
 	}
@@ -246,7 +253,10 @@ func metadataStepPrices(metadata map[string]any, key string) []StepPrice {
 		}
 		prices = append(prices, StepPrice{
 			Quantity: quantity,
-			Price:    json.Number(strings.ReplaceAll(match[2], ",", "")),
+			// Stripping commas is safe here only because stepPattern
+			// admits US grouping alone ([0-9][0-9,]*(\.[0-9]+)?): a
+			// comma can never be the decimal separator in match[2].
+			Price: json.Number(strings.ReplaceAll(match[2], ",", "")),
 		})
 	}
 	sort.SliceStable(prices, func(left, right int) bool {

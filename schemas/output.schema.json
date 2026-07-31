@@ -53,7 +53,12 @@
       "type": "array",
       "items": {"$ref": "#/$defs/documentLink"}
     },
-    "artifact": {"$ref": "#/$defs/documentArtifact"},
+    "artifact": {
+      "oneOf": [
+        {"$ref": "#/$defs/documentArtifact"},
+        {"$ref": "#/$defs/exportArtifact"}
+      ]
+    },
     "cache": {"type": "object"},
     "entries": {"type": "array"},
     "verification": {"type": "object"},
@@ -90,6 +95,7 @@
         "type": "object",
         "required": ["demand", "status", "candidate_count"],
         "properties": {
+          "demand": {"$ref": "#/$defs/demand"},
           "status": {
             "enum": [
               "priced",
@@ -213,6 +219,23 @@
         "size_bytes": {"type": "integer", "minimum": 1},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "fetched_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "exportArtifact": {
+      "type": "object",
+      "required": [
+        "output_path",
+        "format",
+        "size_bytes",
+        "sha256",
+        "line_count"
+      ],
+      "properties": {
+        "output_path": {"type": "string", "minLength": 1},
+        "format": {"enum": ["ec-bom-csv"]},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "line_count": {"type": "integer", "minimum": 1}
       }
     },
     "fieldComparison": {
@@ -368,6 +391,8 @@
         "effective_unit_price": {"$ref": "#/$defs/decimal"},
         "extended_price": {"$ref": "#/$defs/decimal"},
         "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "pricing_strategy": {"type": "string", "minLength": 1},
+        "order_plan": {"type": "string", "minLength": 1},
         "stock_verified": {"type": "boolean"},
         "legs": {
           "type": "array",

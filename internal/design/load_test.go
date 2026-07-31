@@ -1,6 +1,8 @@
 package design
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -55,5 +57,20 @@ func TestLoadSourcesRejectsEmptyIdentifiers(t *testing.T) {
 func TestLoadSourcesRejectsRepeatedStdin(t *testing.T) {
 	if _, err := LoadSources([]string{"-", "-"}, strings.NewReader(validDesign)); err == nil {
 		t.Fatal("LoadSources() accepted stdin twice")
+	}
+}
+
+func TestLoadSourcesRejectsEmptyDesignDocuments(t *testing.T) {
+	// An empty array or wrapper document is almost certainly an authoring
+	// mistake; it must fail per document, not be masked by designs from
+	// another source in the same invocation.
+	valid := filepath.Join(t.TempDir(), "valid.json")
+	if err := os.WriteFile(valid, []byte(validDesign), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range []string{`[]`, `{"designs": []}`} {
+		if _, err := LoadSources([]string{"-", valid}, strings.NewReader(payload)); err == nil {
+			t.Fatalf("LoadSources() accepted empty document %q", payload)
+		}
 	}
 }

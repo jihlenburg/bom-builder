@@ -105,6 +105,27 @@ func OptimizePurchaseFamiliesWithPreference(
 		validFamilies = append(validFamilies, family)
 	}
 
+	// Every candidate plan is later compared by raw ExtendedPrice micros,
+	// which is meaningless across currencies: a silent pick could select
+	// the economically more expensive plan. validateFamily guarantees one
+	// currency per family; this guarantees one currency per comparison,
+	// mirroring the sourcing layer's explicit conversion refusal.
+	currencies := make(map[string]bool)
+	for _, family := range validFamilies {
+		currencies[family.PriceBreaks[0].Currency] = true
+	}
+	if len(currencies) > 1 {
+		names := make([]string, 0, len(currencies))
+		for currency := range currencies {
+			names = append(names, currency)
+		}
+		sort.Strings(names)
+		return nil, fmt.Errorf(
+			"purchase families span multiple currencies (%s): cross-currency comparison requires explicit conversion",
+			strings.Join(names, ", "),
+		)
+	}
+
 	plans := make([]PurchasePlan, 0, len(validFamilies))
 	for _, family := range validFamilies {
 		leg, err := purchaseLegFromFamily(family, requiredQuantity)

@@ -128,7 +128,8 @@ func validatePart(
 	if part.Manufacturer == "" || len(part.Manufacturer) > 120 {
 		return fmt.Errorf("%s.manufacturer is required and must be at most 120 characters", prefix)
 	}
-	for field, value := range numericFields(part) {
+	for _, numeric := range numericFields(part) {
+		field, value := numeric.name, numeric.value
 		if value == nil {
 			continue
 		}
@@ -299,21 +300,30 @@ func requiresPositiveValue(field string) bool {
 	}
 }
 
-func numericFields(part *PartSpec) map[string]*string {
-	return map[string]*string{
-		"resistance_ohms":         part.ResistanceOhms,
-		"capacitance_farads":      part.CapacitanceFarads,
-		"inductance_henries":      part.InductanceHenries,
-		"tolerance_percent":       part.TolerancePercent,
-		"power_watts":             part.PowerWatts,
-		"voltage_volts":           part.VoltageVolts,
-		"esr_ohms":                part.ESROhms,
-		"rated_current_amps":      part.RatedCurrentAmps,
-		"saturation_current_amps": part.SaturationAmps,
-		"dc_resistance_ohms":      part.DCResistanceOhms,
-		"length_mm":               part.LengthMM,
-		"width_mm":                part.WidthMM,
-		"height_mm":               part.HeightMM,
+type numericField struct {
+	name  string
+	value *string
+}
+
+// numericFields returns the validated fields in a fixed declaration order so
+// error selection is deterministic: with a map, the field named in a
+// multi-error request would vary run to run, violating the deterministic
+// output rule and breaking golden tests of failure envelopes.
+func numericFields(part *PartSpec) []numericField {
+	return []numericField{
+		{"resistance_ohms", part.ResistanceOhms},
+		{"capacitance_farads", part.CapacitanceFarads},
+		{"inductance_henries", part.InductanceHenries},
+		{"tolerance_percent", part.TolerancePercent},
+		{"power_watts", part.PowerWatts},
+		{"voltage_volts", part.VoltageVolts},
+		{"esr_ohms", part.ESROhms},
+		{"rated_current_amps", part.RatedCurrentAmps},
+		{"saturation_current_amps", part.SaturationAmps},
+		{"dc_resistance_ohms", part.DCResistanceOhms},
+		{"length_mm", part.LengthMM},
+		{"width_mm", part.WidthMM},
+		{"height_mm", part.HeightMM},
 	}
 }
 

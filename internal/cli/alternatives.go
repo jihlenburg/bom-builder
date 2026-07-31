@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/jihlenburg/bom-builder/internal/alternatives"
@@ -53,6 +54,12 @@ func runAlternatives(
 			contract.ExitInput,
 			pretty,
 		)
+	}
+	if remaining[0] != "-" && strings.HasPrefix(remaining[0], "-") {
+		// A flag-shaped leftover ("--bogus") must surface as a usage
+		// error, not be opened as a file; the bare "-" stdin marker
+		// stays valid.
+		return emitUnexpected(stdout, "alternatives", []string{remaining[0]}, pretty)
 	}
 	request, err := alternatives.Load(remaining[0], stdin)
 	if err != nil {

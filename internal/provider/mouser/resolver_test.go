@@ -87,6 +87,32 @@ func TestResolverKeepsLooseMatchReviewRequired(t *testing.T) {
 	}
 }
 
+func TestResolverLooseMatchKeepsShortageExplicit(t *testing.T) {
+	t.Parallel()
+	// A loose match that also has insufficient stock must surface the
+	// blocking shortage, not collapse it into a bare "review": hiding a
+	// stock state behind the review flag is exactly the implicit-state
+	// collapse the engineering rules forbid. The offer's ReviewRequired
+	// flag still records that the match was loose.
+	candidate := pricedPart("949")
+	candidate.ManufacturerPartNumber = "RC0402FR-0710KL-T"
+	resolver, _ := NewResolver(stubSearcher{broad: []Part{candidate}})
+	result, err := resolver.Lookup(context.Background(), procurement.Demand{
+		PartNumber:       "RC0402FR-0710KL",
+		Manufacturer:     "Yageo",
+		RequiredQuantity: 950,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "shortage" || result.IssueCode != "INSUFFICIENT_STOCK" {
+		t.Fatalf("shortage was masked by review status: %#v", result)
+	}
+	if result.Offer == nil || !result.Offer.ReviewRequired || result.Offer.SelectedPlan != nil {
+		t.Fatalf("review flag or plan safety lost: %#v", result.Offer)
+	}
+}
+
 func TestResolverFiltersWrongManufacturer(t *testing.T) {
 	t.Parallel()
 	wrong := pricedPart("5000")

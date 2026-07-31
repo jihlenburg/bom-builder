@@ -125,6 +125,26 @@ in `parts[].offers`, while `parts[].offer` is the chosen safe plan. Plans in
 different currencies are never compared; the command fails closed until an FX
 layer can prove a common currency.
 
+## Microchip factory evidence (no pricing)
+
+```bash
+./bin/bom-builder lookup DSPIC33AK512MPS506-E/PT \
+  --manufacturer Microchip \
+  --quantity 10 \
+  --providers microchip \
+  --pretty
+```
+
+The `microchip` provider queries Microchip's public, credential-free
+Product API for factory-direct availability, lead time, lifecycle status
+(REL/EOL), MOQ/order-multiple, and datasheet links. The catalog carries
+no pricing, so results are always review-required evidence with exit
+code `3` and can never become a selected purchase plan — the offer's
+product URL points at microchipDIRECT for the human order decision.
+The provider applies only to Microchip/Atmel parts, is selected
+explicitly (never by `--providers auto`), and participates in the
+lookup cache like every other provider.
+
 ## Persistent lookup cache
 
 `lookup`, `price`, `documents list`, and `alternatives` cache successful

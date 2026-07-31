@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jihlenburg/bom-builder/internal/contract"
 )
 
 func TestMain(testingMain *testing.M) {
@@ -77,6 +79,64 @@ func TestHelpIsConciseAndDoesNotDependOnConfiguration(t *testing.T) {
 	}
 }
 
+func TestUnknownFlagsAreRejectedNotTreatedAsPositionals(t *testing.T) {
+	// `lookup --stock-verify --manufacturer Yageo` used to pass the length
+	// gate and query providers for the literal MPN "--stock-verify",
+	// burning a provider request and reporting not_found instead of a
+	// usage error. Every positional consumer must reject flag-shaped
+	// leftovers the way price and export already do.
+	t.Chdir(t.TempDir())
+	cases := map[string][]string{
+		"lookup":         {"lookup", "--stock-verify", "--manufacturer", "Yageo"},
+		"validate":       {"validate", "--bogus"},
+		"documents list": {"documents", "list", "--bogus-flag"},
+		"alternatives":   {"alternatives", "--bogus"},
+	}
+	for name, args := range cases {
+		var stdout bytes.Buffer
+		exitCode := Run(args, strings.NewReader(""), &stdout, &bytes.Buffer{})
+		if exitCode != contract.ExitInput ||
+			!strings.Contains(stdout.String(), "unexpected argument") {
+			t.Errorf("%s: exit = %d, output = %s", name, exitCode, stdout.String())
+		}
+	}
+}
+
+func TestDotEnvProblemsAreUserErrorsWithTheRealCommand(t *testing.T) {
+	// A broken checkout-local .env is user-authored input, not an internal
+	// failure: the envelope must carry the invoked command and exit 2 so
+	// agents can distinguish "fix your .env" from "the tool broke".
+	directory := t.TempDir()
+	t.Chdir(directory)
+	if err := os.WriteFile(
+		filepath.Join(directory, ".env"),
+		[]byte("BOM_BUILDER_BROKEN=\"unclosed\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+
+	exitCode := Run([]string{"capabilities"}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if exitCode != contract.ExitInput {
+		t.Fatalf("exit code = %d, want %d; output = %s", exitCode, contract.ExitInput, stdout.String())
+	}
+	var payload struct {
+		Command  string `json:"command"`
+		ExitCode int    `json:"exit_code"`
+		Errors   []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid JSON envelope: %v: %s", err, stdout.String())
+	}
+	if payload.Command != "capabilities" || payload.ExitCode != contract.ExitInput ||
+		len(payload.Errors) == 0 || payload.Errors[0].Code != "CONFIG_ERROR" {
+		t.Fatalf("unexpected envelope: %s", stdout.String())
+	}
+}
+
 func TestValidateReadsStdinAndEmitsJSON(t *testing.T) {
 	t.Chdir(t.TempDir())
 	var stdout bytes.Buffer
@@ -102,6 +162,74 @@ func TestValidateReadsStdinAndEmitsJSON(t *testing.T) {
 	}
 	if payload.Status != "valid" || payload.DesignCount != 1 || payload.PartCount != 1 {
 		t.Fatalf("unexpected validation payload: %#v", payload)
+	}
+}
+
+func TestLookupMicrochipReturnsReviewEvidenceWithoutPricing(t *testing.T) {
+	t.Chdir(t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		fmt.Fprint(writer, `{"data":[{
+			"part_number":"DSPIC33AK512MPS506-E/PT",
+			"description":"200MHz DSC",
+			"component_type":"16-bit DSC",
+			"instock_quantity":"960",
+			"lead_time_weeks":"6",
+			"lifecycle_status":"REL",
+			"minimum_order_quantity":"1",
+			"order_multiple":"160",
+			"packaging_type":"TRAY",
+			"datasheet_url":"https://ww1.microchip.com/ds.pdf"
+		}],"pagenumber":1,"pagesize":1000,"totalPages":1,"totalRecords":1}`)
+	}))
+	defer server.Close()
+	t.Setenv("BOM_BUILDER_MICROCHIP_PRODUCTS_URL", server.URL)
+	var stdout bytes.Buffer
+
+	exitCode := Run(
+		[]string{
+			"lookup", "DSPIC33AK512MPS506-E/PT",
+			"--manufacturer", "Microchip",
+			"--quantity", "10",
+			"--providers", "microchip",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&bytes.Buffer{},
+	)
+	if exitCode != 3 {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+	var payload struct {
+		Parts []struct {
+			Status string `json:"status"`
+			Offer  struct {
+				Provider          string          `json:"provider"`
+				ReviewRequired    bool            `json:"review_required"`
+				AvailableQuantity *int            `json:"available_quantity"`
+				LifecycleStatus   string          `json:"lifecycle_status"`
+				SelectedPlan      json.RawMessage `json:"selected_plan"`
+				PriceBreaks       json.RawMessage `json:"price_breaks"`
+			} `json:"offer"`
+			IssueCode string `json:"issue_code"`
+		} `json:"parts"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid JSON: %v: %s", err, stdout.String())
+	}
+	if len(payload.Parts) != 1 {
+		t.Fatalf("parts = %s", stdout.String())
+	}
+	part := payload.Parts[0]
+	if part.Status != "review" ||
+		part.IssueCode != "MANUFACTURER_EVIDENCE_ONLY" ||
+		part.Offer.Provider != "microchip" ||
+		!part.Offer.ReviewRequired ||
+		part.Offer.AvailableQuantity == nil ||
+		*part.Offer.AvailableQuantity != 960 ||
+		part.Offer.LifecycleStatus != "REL" ||
+		len(part.Offer.SelectedPlan) != 0 ||
+		len(part.Offer.PriceBreaks) != 0 {
+		t.Fatalf("unexpected evidence lookup: %s", stdout.String())
 	}
 }
 

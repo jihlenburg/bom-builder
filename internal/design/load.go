@@ -78,6 +78,13 @@ func decodeDocument(reader io.Reader) ([]contract.Design, error) {
 		if err := decodeStrict(trimmed, &designs); err != nil {
 			return nil, err
 		}
+		// An empty array is almost certainly an authoring mistake and
+		// must fail per document rather than be masked by designs from
+		// another source in the same invocation. The published input
+		// schema requires minItems 1 for this form.
+		if len(designs) == 0 {
+			return nil, errors.New("document contains no designs")
+		}
 		return designs, nil
 	}
 
@@ -91,6 +98,10 @@ func decodeDocument(reader io.Reader) ([]contract.Design, error) {
 		}
 		if err := decodeStrict(trimmed, &wrapper); err != nil {
 			return nil, err
+		}
+		// Same strictness as the array form above.
+		if len(wrapper.Designs) == 0 {
+			return nil, errors.New("document contains no designs")
 		}
 		return wrapper.Designs, nil
 	}

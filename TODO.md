@@ -87,15 +87,24 @@ and quality item from the Python roadmap.
       scope for this tool. Use instead: an interactive browser session
       for one-off checks, or Eurocircuits' upload-time sourcing (Microchip
       is an EC preferred DIRECT supplier).
-- [ ] `microchipdirect` provider via Microchip's OFFICIAL Purchasing API
-      (2026-07-30 follow-up): Microchip offers a credentialed Purchasing
-      API for MicrochipDirect business accounts, "built to integrate with
-      sourcing tools" — the same credentialed-adapter model as Mouser/
-      Digi-Key/TI, no scraping involved. PREREQUISITE (account owner):
-      request API access on the MicrochipDirect business account, obtain
-      docs + credentials; THEN implement as a normal native adapter with
-      recorded fixtures. Would cover the manufacturer-direct channel that
-      distribution lacks (fresh temp/speed grades, e.g. -E/PT parts).
+- [x] `microchip` availability provider via the PUBLIC Product API — IMPLEMENTED + LIVE-VERIFIED 2026-07-31 (see LOGBOOK) —
+      VERIFIED LIVE 2026-07-31 (JI session): documented under Partner Data
+      Exchange (ProductAPI-user-guide.html), endpoint
+      `GET https://www.microchip.com/designresources/product-catalog/api/productInfo`
+      `?part=<prefix,min 3 chars>&pagesize&pagenumber`, NO credentials,
+      plain curl + browser UA returns 200 in <1 s. Response: paginated
+      records with `part_number`, `instock_quantity`, `lead_time_weeks`,
+      `lifecycle_status` (REL/EOL), `minimum_order_quantity`,
+      `order_multiple`, `packaging_type`, `datasheet_url`, MSL, export/
+      compliance data — NO pricing. Live probe on DSPIC33AK512MPS506
+      returned all 15 variants and matched the manual MicrochipDirect
+      check exactly (-E/PT 960 in stock TRAY mult 160; -I/PT 0; /5L EOL).
+      Adapter design: availability/lifecycle EVIDENCE provider (no
+      purchase plans — priceless offers stay review-level evidence),
+      prefix query on the base part + exact-match filter, cache-first,
+      gentle request budget (no documented rate limits — assume small).
+      The credentialed Purchasing API (business account, adds
+      pricing/ordering) remains the later upgrade path if needed.
 - [ ] Optional breadth: evaluate a Nexar (Octopart) aggregator provider —
       one credentialed GraphQL API adding Farnell/RS/TME coverage (all
       Eurocircuits preferred suppliers bom-builder lacks); check seller
@@ -185,3 +194,53 @@ and quality item from the Python roadmap.
 - [ ] Cross-compile release binaries for macOS, Linux, and Windows
 - [ ] Add checksums, SBOMs, signing, and macOS notarization
 - [ ] Add shell completions and Claude/Codex/shell/CI automation guides
+
+## Code review remediation (2026-07-31)
+
+Findings, file:line detail, and fix order live in `CODE_REVIEW_2026-07-31.md`.
+
+- [x] C1 `money.Parse` fraction overflow wrapping to a negative Decimal
+- [x] C2 digit-free separator input parsing as a zero price
+- [x] C3 `export ec-bom` artifact failing the published output schema
+      (new `exportArtifact` def, envelope `artifact` oneOf; bonus: missing
+      `demand`, `pricing_strategy`, `order_plan` property descriptions)
+- [x] Money: reject letters embedded between digit runs ("1e5", "2 for 1.50")
+- [x] Money: reject ambiguous lone-comma thousands ("$1,234"); sign-safe
+      `String()`; adversarial money test suite
+- [x] Input schema describes all three accepted document shapes; loader
+      rejects empty array/wrapper documents per document
+- [x] NXP: string prices reach `money.Parse` verbatim (EU comma-decimal
+      1000x fix); integer fields keep US-grouping tolerance
+- [x] NXP: accept "NXP USA Inc.", "N.V.", "B.V." manufacturer spellings
+- [x] Mouser: loose-match squash no longer masks shortage/stock_unknown/
+      unavailable states
+- [x] Cache: `Put` round-trips through `decodeRow`, refusing entries the
+      read path would reject (self-poisoning footgun)
+- [x] NXP failure model: transient errors fail one lookup only; schema drift
+      still disables for the run; dead browser processes are dropped and
+      relaunched; body fetch waits for `Network.loadingFinished`; operations
+      serialized under an operation mutex (CDP single-consumer documented);
+      scripted fake-browser test harness added
+- [x] `.env` trust model: endpoint/browser/cache-path keys must come from the
+      process environment (refused when a `.env` would introduce them);
+      malformed `.env` now exits 2 under the invoked command; lowercase keys
+      accepted; UTF-8 BOM stripped; unbalanced quotes are explicit errors
+- [x] Optimizer: explicit refusal for cross-currency plan comparison
+- [x] Sourcing: unknown statuses count as INTERNAL_CONTRACT_ERROR; fallback
+      path strips leaked SelectedPlans
+- [x] Aggregation: AGGREGATION_METADATA_CONFLICT warnings on conflicting
+      description/package/pins; empty fields filled from later designs
+- [x] CLI: uniform unknown-flag rejection (lookup, validate, documents list,
+      alternatives)
+- [x] Deterministic field order for alternatives validation errors
+- [x] Cache: session pragmas ride in the DSN (per-connection busy_timeout);
+      CacheStatus reports the database's actual `PRAGMA user_version`
+- [x] Provider retry/auth-path tests (DigiKey 401-refresh, 429/5xx backoff,
+      oversized-body cap; Mouser 429 backoff; TI 401-refresh); dotenv edge
+      tests; sanitizer truncation now UTF-8-safe in all three adapters
+- [ ] Remaining CLI error-path tests (provider-config errors, bounds,
+      `--pretty` shape, empty-stderr assertion)
+- [ ] Remaining Minor findings per review file (Retry-After handling, NXP
+      PartDetail fixed sleep, Mouser short-MPN state, diacritic folding,
+      providerutil dedup, help/typo polish, cache exit-code split, eC-BOM
+      quantity/designator consistency and formula guard)

@@ -126,6 +126,10 @@ Example:
 Example:
   bom-builder lookup RC0402FR-0710KL --manufacturer Yageo \
     --quantity 100 --providers mouser,digikey --pretty
+
+The "microchip" provider (explicit selection only) returns
+credential-free factory availability and lifecycle EVIDENCE without
+pricing; such results always remain review-required.
 `,
 	"price": `Usage:
   bom-builder price <design.json|-> [...] --units <n>

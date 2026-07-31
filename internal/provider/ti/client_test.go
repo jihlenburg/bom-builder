@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestClientUsesOAuthCurrencyAndReusesToken(t *testing.T) {
@@ -209,4 +210,66 @@ func productFixture(
 			]
 		}]
 	}`, tiPartNumber, genericPartNumber, stock, limitJSON, lifecycle, currency)
+}
+
+func TestClientRefreshesTokenOnceAfterUnauthorized(t *testing.T) {
+	t.Parallel()
+	// A 401 on a product call means the token expired server-side: the
+	// client must clear it, fetch a fresh one, and retry exactly once.
+	var (
+		mu         sync.Mutex
+		tokenCalls int
+		apiCalls   int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/oauth/accesstoken" {
+			mu.Lock()
+			tokenCalls++
+			issued := tokenCalls
+			mu.Unlock()
+			fmt.Fprintf(writer, `{"access_token":"token-%d","expires_in":3599}`, issued)
+			return
+		}
+		mu.Lock()
+		apiCalls++
+		mu.Unlock()
+		if request.Header.Get("Authorization") == "Bearer token-1" {
+			writer.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(writer, `{}`)
+			return
+		}
+		writeProductResponse(writer, productFixture(
+			"TMP421AQDCNRQ1", "TMP421", 3000, "null", "ACTIVE", "USD",
+		))
+	}))
+	defer server.Close()
+
+	client := testClient(t, server, "USD")
+	product, err := client.Product(context.Background(), "TMP421AQDCNRQ1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if product.TIPartNumber != "TMP421AQDCNRQ1" {
+		t.Fatalf("unexpected product: %#v", product)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if tokenCalls != 2 || apiCalls != 2 {
+		t.Fatalf("token calls = %d, api calls = %d; want 2 and 2", tokenCalls, apiCalls)
+	}
+}
+
+func TestSanitizeTruncatesAtRuneBoundary(t *testing.T) {
+	t.Parallel()
+	// Truncating at a byte offset can split a multi-byte rune and emit
+	// invalid UTF-8 into JSON error fields.
+	client := &Client{}
+	long := strings.Repeat("a", 299) + "€ tail"
+	sanitized := client.sanitize(long)
+	if !utf8.ValidString(sanitized) {
+		t.Fatalf("sanitized message is not valid UTF-8: %q", sanitized)
+	}
+	if len(sanitized) > 300 {
+		t.Fatalf("sanitized length = %d", len(sanitized))
+	}
 }

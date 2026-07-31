@@ -144,7 +144,22 @@ func Open(path string) (*Store, error) {
 			}
 		}
 	}
-	dsn := (&url.URL{Scheme: "file", Path: absolute}).String()
+	// Session pragmas ride in the DSN so the driver applies them to every
+	// connection it opens — including a replacement connection after
+	// driver.ErrBadConn. A pool-level Exec would configure only the first
+	// connection, and a recycled one would silently run with
+	// busy_timeout = 0, turning cross-process contention into immediate
+	// SQLITE_BUSY write failures. (journal_mode is not needed here: WAL
+	// persists in the database file and initialize verifies it.)
+	pragmas := url.Values{}
+	for _, pragma := range []string{
+		"busy_timeout(5000)",
+		"foreign_keys(ON)",
+		"synchronous(NORMAL)",
+	} {
+		pragmas.Add("_pragma", pragma)
+	}
+	dsn := (&url.URL{Scheme: "file", Path: absolute, RawQuery: pragmas.Encode()}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, &Error{Kind: "open", Message: "could not initialize SQLite"}
@@ -176,14 +191,13 @@ func (store *Store) initialize(ctx context.Context) error {
 	if err := store.db.PingContext(ctx); err != nil {
 		return &Error{Kind: "open", Message: "could not open SQLite database"}
 	}
-	for _, statement := range []string{
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA synchronous = NORMAL",
-	} {
-		if _, err := store.db.ExecContext(ctx, statement); err != nil {
-			return &Error{Kind: "open", Message: "could not configure SQLite database"}
-		}
+	// The session pragmas arrive via the DSN (see Open); verify one here
+	// so a driver change that stops honoring _pragma parameters fails
+	// loudly at open instead of silently degrading write contention.
+	var busyTimeout int
+	if err := store.db.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil ||
+		busyTimeout != 5000 {
+		return &Error{Kind: "open", Message: "SQLite session pragmas were not applied"}
 	}
 	var journalMode string
 	if err := store.db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
@@ -313,6 +327,33 @@ func (store *Store) Put(
 		return &Error{Kind: "encode", Message: "could not encode cache result"}
 	}
 	digest := sha256.Sum256(resultJSON)
+	checksum := hex.EncodeToString(digest[:])
+	// Refuse to persist anything the read path would reject: decodeRow
+	// treats invalid entries as corrupt with deliberately no network
+	// fallback, so a Put that bypasses its contract (most likely a new
+	// adapter status missing from validCachedStatus) would poison every
+	// later lookup of this part until expiry or prune. Round-tripping the
+	// exact row we are about to write makes the write path and read path
+	// enforce one contract by construction.
+	candidate := storedRow{
+		provider:       strings.ToLower(strings.TrimSpace(provider)),
+		key:            key,
+		contextHash:    contextHash,
+		adapterVersion: adapterVersion,
+		demandJSON:     demandJSON,
+		resultJSON:     resultJSON,
+		resultSHA256:   checksum,
+		status:         result.Status,
+		fetchedAtNS:    fetchedAt.UTC().UnixNano(),
+		expiresAtNS:    expiresAt.UTC().UnixNano(),
+		sourceRequests: sourceRequests,
+	}
+	if _, decodeErr := decodeRow(candidate, fetchedAt.UTC()); decodeErr != nil {
+		return &Error{
+			Kind:    "invalid",
+			Message: "refusing to cache an entry the read path would reject: " + decodeErr.Error(),
+		}
+	}
 	_, err = store.db.ExecContext(
 		ctx,
 		`INSERT INTO lookup_entries (
@@ -330,13 +371,13 @@ func (store *Store) Put(
 			fetched_at_ns = excluded.fetched_at_ns,
 			expires_at_ns = excluded.expires_at_ns,
 			source_requests = excluded.source_requests`,
-		strings.ToLower(strings.TrimSpace(provider)),
+		candidate.provider,
 		key,
 		contextHash,
 		adapterVersion,
 		demandJSON,
 		resultJSON,
-		hex.EncodeToString(digest[:]),
+		checksum,
 		result.Status,
 		fetchedAt.UTC().UnixNano(),
 		expiresAt.UTC().UnixNano(),
@@ -352,9 +393,15 @@ func (store *Store) Put(
 // CacheStatus returns entry counts and file metadata.
 func (store *Store) CacheStatus(ctx context.Context, now time.Time) (Status, error) {
 	status := Status{
-		Path:          store.path,
-		Exists:        true,
-		SchemaVersion: SchemaVersion,
+		Path:   store.path,
+		Exists: true,
+	}
+	// Report the database's actual schema version, not the compile-time
+	// constant: echoing the constant would mask drift if the open-time
+	// migration invariant ever loosens.
+	if err := store.db.QueryRowContext(ctx, "PRAGMA user_version").
+		Scan(&status.SchemaVersion); err != nil {
+		return Status{}, &Error{Kind: "read", Message: "could not read cache schema version"}
 	}
 	var oldestNS, newestNS sql.NullInt64
 	err := store.db.QueryRowContext(

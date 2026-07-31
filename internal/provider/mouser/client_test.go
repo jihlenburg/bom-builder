@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestSearchUsesOfficialV2Contract(t *testing.T) {
@@ -172,4 +173,67 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return function(request)
+}
+
+func TestSearchBacksOffAndRetriesTemporaryRateLimit(t *testing.T) {
+	t.Parallel()
+	// A 429 with no spare key must back off and retry within the attempt
+	// budget instead of failing the lookup outright.
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		calls++
+		call := calls
+		mu.Unlock()
+		if call == 1 {
+			writer.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(writer, `{"Errors":[{"Code":"TooManyRequests","Message":"slow down"}]}`)
+			return
+		}
+		fmt.Fprint(writer, `{"Errors":[],"SearchResults":{"NumberOfResult":1,"Parts":[`+
+			`{"ManufacturerPartNumber":"RC0402FR-0710KL","Manufacturer":"Yageo"}`+
+			`]}}`)
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		Endpoint:    server.URL,
+		APIKeys:     []string{"only-key"},
+		MaxAttempts: 2,
+		Backoff:     time.Millisecond,
+		HTTPClient:  server.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts, err := client.Search(context.Background(), "RC0402FR-0710KL", "Yageo", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("parts = %#v", parts)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestSanitizeMessageTruncatesAtRuneBoundary(t *testing.T) {
+	t.Parallel()
+	// Truncating at a byte offset can split a multi-byte rune and emit
+	// invalid UTF-8 into JSON error fields.
+	client := &Client{}
+	long := strings.Repeat("a", 299) + "€ tail"
+	sanitized := client.sanitizeMessage(long)
+	if !utf8.ValidString(sanitized) {
+		t.Fatalf("sanitized message is not valid UTF-8: %q", sanitized)
+	}
+	if len(sanitized) > 300 {
+		t.Fatalf("sanitized length = %d", len(sanitized))
+	}
 }

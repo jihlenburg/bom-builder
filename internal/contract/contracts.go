@@ -84,6 +84,7 @@ type CapabilitiesEnvelope struct {
 	PlannedCommands         []string                   `json:"planned_commands"`
 	Distributors            []string                   `json:"distributors"`
 	ImplementedDistributors []string                   `json:"implemented_distributors"`
+	Manufacturers           []string                   `json:"manufacturers"`
 	Services                []string                   `json:"services"`
 	ArtifactFormats         []string                   `json:"artifact_formats"`
 	Features                Features                   `json:"features"`

@@ -157,6 +157,16 @@ func (resolver *MultiResolver) Lookup(
 				fallbackRank(fallbacks[right].Status)
 		})
 		selected := fallbacks[0]
+		// No fallback outcome may carry a purchase plan: a misbehaving
+		// adapter that attached one to a non-priced result would
+		// otherwise leak it into offers, where downstream ranking
+		// scans for any SelectedPlan regardless of status.
+		clearSelectedPlans(output.Offers)
+		if selected.Offer != nil && selected.Offer.SelectedPlan != nil {
+			cleared := *selected.Offer
+			cleared.SelectedPlan = nil
+			selected.Offer = &cleared
+		}
 		output.Status = selected.Status
 		output.Offer = selected.Offer
 		output.IssueCode = selected.IssueCode

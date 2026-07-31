@@ -52,6 +52,12 @@ type Client struct {
 	partBaseURL   string
 	timeout       time.Duration
 
+	// opMu serializes whole Search/PartDetail operations: cdpProcess is
+	// a single-consumer transport, so concurrent operations would steal
+	// each other's responses. mu guards only the small shared fields and
+	// may be taken while opMu is held, never the other way around.
+	opMu sync.Mutex
+
 	mu           sync.Mutex
 	process      *cdpProcess
 	requestCount int
@@ -182,28 +188,31 @@ func (client *Client) Search(
 	if query == "" || len(query) > 80 {
 		return nil, &Error{Kind: "input", Message: "valid NXP part number is required"}
 	}
+	// A disabled client refuses before touching the browser at all.
+	if err := client.disabledError(); err != nil {
+		return nil, err
+	}
+	client.opMu.Lock()
+	defer client.opMu.Unlock()
 	operationContext, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
 	process, err := client.ensureProcess(operationContext)
 	if err != nil {
 		return nil, err
 	}
-	if err := client.disabledError(); err != nil {
-		return nil, err
-	}
 	process.clearEvents()
 	if err := process.callPage(operationContext, "Page.enable", map[string]any{}, nil); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	if err := process.callPage(operationContext, "Network.enable", map[string]any{}, nil); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	searchURL := client.searchURL(query)
 	client.incrementRequests()
 	if err := process.callPage(operationContext, "Page.navigate", map[string]any{
 		"url": searchURL,
 	}, nil); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	params, err := process.waitEvent(
 		operationContext,
@@ -219,8 +228,10 @@ func (client *Client) Search(
 		},
 	)
 	if err != nil {
-		client.disable(errors.New("NXP store search response was not observed"))
-		return nil, browserError(operationContext, err)
+		// A missing response event is transient (slow page, dropped
+		// navigation): fail this lookup only. Disabling here would
+		// let one slow page kill direct pricing for the whole run.
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	var responseEvent struct {
 		RequestID string `json:"requestId"`
@@ -229,12 +240,35 @@ func (client *Client) Search(
 			Status float64 `json:"status"`
 		} `json:"response"`
 	}
-	if json.Unmarshal(params, &responseEvent) != nil ||
-		responseEvent.RequestID == "" ||
-		responseEvent.Response.Status < 200 ||
-		responseEvent.Response.Status >= 300 {
-		client.disable(errors.New("NXP store search returned an invalid response"))
-		return nil, &Error{Kind: "response", Message: "NXP store search returned an invalid response"}
+	if json.Unmarshal(params, &responseEvent) != nil || responseEvent.RequestID == "" {
+		// An event that no longer carries a request ID is evidence of
+		// CDP/site drift: fail closed for the rest of the run.
+		client.disable(errors.New("NXP store search response event changed shape"))
+		return nil, &Error{Kind: "schema", Message: "NXP store search response event changed shape"}
+	}
+	if responseEvent.Response.Status < 200 || responseEvent.Response.Status >= 300 {
+		// Server-side statuses (5xx, 429, redirects) are transient
+		// conditions, not schema drift; the next lookup may succeed.
+		return nil, &Error{
+			Kind:    "response",
+			Message: fmt.Sprintf("NXP store search returned HTTP status %d", int(responseEvent.Response.Status)),
+		}
+	}
+	// CDP guarantees the response body only after Network.loadingFinished
+	// for the same request; fetching on responseReceived races Chrome and
+	// intermittently yields "No data found for resource".
+	if _, err := process.waitEvent(
+		operationContext,
+		"Network.loadingFinished",
+		func(raw json.RawMessage) bool {
+			var event struct {
+				RequestID string `json:"requestId"`
+			}
+			return json.Unmarshal(raw, &event) == nil &&
+				event.RequestID == responseEvent.RequestID
+		},
+	); err != nil {
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	var bodyResult struct {
 		Body          string `json:"body"`
@@ -243,8 +277,10 @@ func (client *Client) Search(
 	if err := process.callPage(operationContext, "Network.getResponseBody", map[string]any{
 		"requestId": responseEvent.RequestID,
 	}, &bodyResult); err != nil {
-		client.disable(errors.New("NXP store search body was unavailable"))
-		return nil, browserError(operationContext, err)
+		// Body unavailability after loadingFinished is still treated
+		// as transient: eviction from Chrome's buffer is timing, not
+		// schema drift.
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	process.callPage(operationContext, "Network.disable", map[string]any{}, nil)
 	body := []byte(bodyResult.Body)
@@ -269,6 +305,13 @@ func (client *Client) PartDetail(
 	ctx context.Context,
 	query, matchedPartID string,
 ) (*PartDetail, error) {
+	// The same refusal and serialization discipline as Search: a disabled
+	// client must not touch the browser, and cdpProcess is single-consumer.
+	if err := client.disabledError(); err != nil {
+		return nil, err
+	}
+	client.opMu.Lock()
+	defer client.opMu.Unlock()
 	operationContext, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
 	process, err := client.ensureProcess(operationContext)
@@ -277,16 +320,16 @@ func (client *Client) PartDetail(
 	}
 	process.clearEvents()
 	if err := process.callPage(operationContext, "Page.enable", map[string]any{}, nil); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	client.incrementRequests()
 	if err := process.callPage(operationContext, "Page.navigate", map[string]any{
 		"url": client.partURL(query),
 	}, nil); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	if _, err := process.waitEvent(operationContext, "Page.loadEventFired", nil); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	expression := `new Promise(resolve => setTimeout(() => resolve(` +
 		`document.body ? document.body.innerText : ""), 1500))`
@@ -301,9 +344,26 @@ func (client *Client) PartDetail(
 		"awaitPromise":  true,
 		"returnByValue": true,
 	}, &evaluated); err != nil {
-		return nil, browserError(operationContext, err)
+		return nil, client.browserFailure(operationContext, process, err)
 	}
 	return parsePartDetail(query, matchedPartID, evaluated.Result.Value), nil
+}
+
+// browserFailure converts a transport-level error for callers and, when the
+// underlying browser connection is gone, discards the dead process so the
+// next lookup launches a fresh browser instead of failing forever. Transient
+// failures (timeouts, dropped events) never disable the client — only
+// confirmed schema drift does, at its detection sites.
+func (client *Client) browserFailure(ctx context.Context, process *cdpProcess, err error) error {
+	if errors.Is(err, errBrowserGone) {
+		client.mu.Lock()
+		if client.process == process {
+			client.process = nil
+		}
+		client.mu.Unlock()
+		process.Close()
+	}
+	return browserError(ctx, err)
 }
 
 func (client *Client) ensureProcess(ctx context.Context) (*cdpProcess, error) {

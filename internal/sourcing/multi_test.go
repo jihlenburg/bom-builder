@@ -49,6 +49,39 @@ func TestMultiResolverSelectsCheapestComparableSafePlan(t *testing.T) {
 	}
 }
 
+func TestMultiResolverFallbackClearsSelectedPlans(t *testing.T) {
+	t.Parallel()
+	// A misbehaving adapter can attach a SelectedPlan to a non-priced
+	// result; the fallback path must strip it, or downstream consumers
+	// (alternatives ranking scans offers for any SelectedPlan) would use
+	// an unsafe plan from a shortage line.
+	demand := procurement.Demand{PartNumber: "A", RequiredQuantity: 100}
+	part := pricedProviderPart(t, demand, "mouser", "10.00", "EUR")
+	part.Status = "shortage"
+	part.IssueCode = "INSUFFICIENT_STOCK"
+	resolver, err := NewMultiResolver([]ProviderResolver{
+		{Name: "mouser", Resolver: fixedResolver{part: part}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := resolver.Lookup(context.Background(), demand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "shortage" {
+		t.Fatalf("unexpected status: %#v", result)
+	}
+	if result.Offer != nil && result.Offer.SelectedPlan != nil {
+		t.Fatal("fallback offer retained a selected plan")
+	}
+	for _, offer := range result.Offers {
+		if offer.SelectedPlan != nil {
+			t.Fatal("fallback offers retained a selected plan")
+		}
+	}
+}
+
 func TestMultiResolverRefusesCrossCurrencyComparison(t *testing.T) {
 	t.Parallel()
 	demand := procurement.Demand{PartNumber: "A", RequiredQuantity: 100}

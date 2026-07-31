@@ -3,6 +3,7 @@ package sourcing
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
@@ -103,6 +104,19 @@ func Source(
 			result.Summary.NotApplicableCount++
 		case "provider_error":
 			result.Summary.ProviderErrors++
+		default:
+			// A status outside the contract must not fall through
+			// uncounted: the summary would stop adding up to the
+			// line count and the line would degrade silently.
+			result.Errors = append(result.Errors, contract.Issue{
+				Code: "INTERNAL_CONTRACT_ERROR",
+				Message: fmt.Sprintf(
+					"resolver returned unknown status %q for %s",
+					sourced.Status, demand.PartNumber,
+				),
+			})
+			result.Summary.ProviderErrors++
+			result.Parts[len(result.Parts)-1].Status = "provider_error"
 		}
 		if sourced.IssueCode != "" && sourced.Status != "provider_error" {
 			result.Warnings = append(result.Warnings, contract.Issue{

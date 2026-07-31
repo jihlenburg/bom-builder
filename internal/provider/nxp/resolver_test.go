@@ -141,6 +141,30 @@ func TestResolverSkipsNonNXPManufacturersWithoutBrowser(t *testing.T) {
 	}
 }
 
+func TestSupportsManufacturerAcceptsCommonNXPSpellings(t *testing.T) {
+	t.Parallel()
+	// Distributor catalogs and BOM lines routinely carry NXP's regional
+	// and legal entity names; rejecting them silently downgrades those
+	// lines to not_applicable and loses direct pricing.
+	for _, name := range []string{
+		"NXP",
+		"NXP Semiconductors",
+		"NXP USA Inc.",
+		"NXP Semiconductors N.V.",
+		"NXP B.V.",
+		"Freescale Semiconductor, Inc.",
+	} {
+		if !supportsManufacturer(name) {
+			t.Errorf("supportsManufacturer(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"Yageo", "Texas Instruments", "STMicroelectronics"} {
+		if supportsManufacturer(name) {
+			t.Errorf("supportsManufacturer(%q) = true, want false", name)
+		}
+	}
+}
+
 func TestResolverDoesNotSelectWhenDirectBuyUnavailable(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{

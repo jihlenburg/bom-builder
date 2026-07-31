@@ -109,6 +109,35 @@ func TestOptimizerBuildsCheaperMixedPlan(t *testing.T) {
 	}
 }
 
+func TestOptimizerRefusesCrossCurrencyPlanComparison(t *testing.T) {
+	t.Parallel()
+	// Two viable single-currency families in different currencies produce
+	// plans whose raw micro-values are not commensurable: silently picking
+	// the "cheaper" one can select the economically more expensive plan.
+	// Failed currency normalization must be an explicit state, mirroring
+	// the sourcing layer's CURRENCY_CONVERSION_REQUIRED refusal.
+	stock := 10_000
+	plan, err := OptimizePurchaseFamilies(100, []PurchaseFamily{
+		{
+			ID:                "eur_tape",
+			AvailableQuantity: &stock,
+			PriceBreaks: []PriceBreak{{
+				Quantity: 1, UnitPrice: decimal(t, "0.10"), Currency: "EUR",
+			}},
+		},
+		{
+			ID:                "usd_tape",
+			AvailableQuantity: &stock,
+			PriceBreaks: []PriceBreak{{
+				Quantity: 1, UnitPrice: decimal(t, "0.09"), Currency: "USD",
+			}},
+		},
+	})
+	if err == nil {
+		t.Fatalf("cross-currency comparison should fail, got plan %#v", plan)
+	}
+}
+
 func TestOptimizerNeverMixesCurrencies(t *testing.T) {
 	t.Parallel()
 	_, err := OptimizePurchaseFamilies(100, []PurchaseFamily{{

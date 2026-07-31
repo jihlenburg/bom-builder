@@ -94,6 +94,11 @@ func runDocumentsList(
 			pretty,
 		)
 	}
+	if strings.HasPrefix(args[0], "--") {
+		// A flag-shaped leftover is a mistyped or unknown option, never
+		// a part number.
+		return emitUnexpected(stdout, "documents list", []string{args[0]}, pretty)
+	}
 	partNumber := strings.TrimSpace(args[0])
 	if len(partNumber) < 3 || len(partNumber) > 40 {
 		return emitError(

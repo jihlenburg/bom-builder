@@ -85,6 +85,36 @@ func TestSourceRejectsUnverifiedSelectedPlan(t *testing.T) {
 	}
 }
 
+func TestSourceCountsUnknownStatusAsContractError(t *testing.T) {
+	t.Parallel()
+	// A resolver returning a status outside the contract must not fall
+	// through the summary uncounted: the counts would stop adding up to
+	// the line count and the line would degrade silently. Everywhere else
+	// contract violations map to INTERNAL_CONTRACT_ERROR; this must too.
+	part := procurement.SourcedPart{
+		Demand: procurement.Demand{PartNumber: "A", RequiredQuantity: 1},
+		Status: "backordered",
+	}
+	result := Source(
+		context.Background(),
+		stubResolver{results: map[string]procurement.SourcedPart{"A": part}},
+		[]procurement.Demand{part.Demand},
+		1,
+	)
+	if result.Summary.ProviderErrors != 1 || result.Parts[0].Status != "provider_error" {
+		t.Fatalf("unknown status fell through: %#v", result)
+	}
+	found := false
+	for _, issue := range result.Errors {
+		if issue.Code == "INTERNAL_CONTRACT_ERROR" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing INTERNAL_CONTRACT_ERROR issue: %#v", result.Errors)
+	}
+}
+
 func demandWithPlan(
 	t *testing.T,
 	partNumber, currency, total string,

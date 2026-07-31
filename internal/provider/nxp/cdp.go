@@ -14,6 +14,11 @@ import (
 
 const maxCDPMessageBytes = 16 * 1024 * 1024
 
+// errBrowserGone marks transport failures that mean the browser process or
+// its pipe is dead. Callers use it to discard the process so the next lookup
+// can launch a fresh browser instead of failing forever.
+var errBrowserGone = errors.New("browser connection lost")
+
 type cdpMessage struct {
 	ID        int             `json:"id,omitempty"`
 	Method    string          `json:"method,omitempty"`
@@ -31,6 +36,10 @@ type cdpRead struct {
 	err     error
 }
 
+// cdpProcess is a single-consumer transport: nextID, pending, and the
+// messages channel are unsynchronized by design, so at most one CDP
+// operation may be in flight at a time. Client serializes Search and
+// PartDetail under its operation mutex to uphold this.
 type cdpProcess struct {
 	command   *exec.Cmd
 	toBrowser *os.File
@@ -207,7 +216,7 @@ func (process *cdpProcess) call(
 	_, err = process.toBrowser.Write(data)
 	process.writeMu.Unlock()
 	if err != nil {
-		return errors.New("could not send browser command")
+		return fmt.Errorf("%w: could not send browser command", errBrowserGone)
 	}
 	for {
 		message, err := process.receive(ctx)
@@ -264,10 +273,13 @@ func (process *cdpProcess) receive(ctx context.Context) (cdpMessage, error) {
 		return cdpMessage{}, ctx.Err()
 	case received, open := <-process.messages:
 		if !open {
-			return cdpMessage{}, errors.New("browser CDP connection closed")
+			return cdpMessage{}, fmt.Errorf("%w: browser CDP connection closed", errBrowserGone)
 		}
 		if received.err != nil {
-			return cdpMessage{}, received.err
+			// Every readLoop-fed error (invalid JSON, oversized
+			// message, pipe EOF) precedes the channel closing: the
+			// transport is unusable either way.
+			return cdpMessage{}, fmt.Errorf("%w: %s", errBrowserGone, received.err)
 		}
 		return received.message, nil
 	}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+	"unicode/utf8"
 )
 
 func TestClientUsesOAuthLocaleAndAccountHeadersAndReusesToken(t *testing.T) {
@@ -263,5 +265,141 @@ func TestPricingResponseUsesJSONNumbers(t *testing.T) {
 	}
 	if string(encoded) != "69.8" {
 		t.Fatalf("number = %s", encoded)
+	}
+}
+
+func TestClientRefreshesTokenOnceAfterUnauthorized(t *testing.T) {
+	t.Parallel()
+	// A 401 on a pricing call means the token expired server-side: the
+	// client must clear it, fetch a fresh one, and retry exactly once —
+	// without burning a regular retry attempt.
+	var (
+		mu         sync.Mutex
+		tokenCalls int
+		apiCalls   int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/oauth2/token" {
+			mu.Lock()
+			tokenCalls++
+			issued := tokenCalls
+			mu.Unlock()
+			fmt.Fprintf(writer, `{"access_token":"token-%d","expires_in":600}`, issued)
+			return
+		}
+		mu.Lock()
+		apiCalls++
+		mu.Unlock()
+		if request.Header.Get("Authorization") == "Bearer token-1" {
+			writer.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(writer, `{}`)
+			return
+		}
+		writePricingResponse(writer, "ECA-1VHG102")
+	}))
+	defer server.Close()
+
+	client := testClient(t, server)
+	result, err := client.PricingByQuantity(context.Background(), "ECA-1VHG102", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Currency != "EUR" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if tokenCalls != 2 || apiCalls != 2 {
+		t.Fatalf("token calls = %d, api calls = %d; want 2 and 2", tokenCalls, apiCalls)
+	}
+}
+
+func TestClientRetriesRateLimitAndServerErrors(t *testing.T) {
+	t.Parallel()
+	// 429 and 5xx are transient: with attempts remaining the client backs
+	// off and retries rather than failing the lookup.
+	var (
+		mu       sync.Mutex
+		apiCalls int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/oauth2/token" {
+			fmt.Fprint(writer, `{"access_token":"access-secret","expires_in":600}`)
+			return
+		}
+		mu.Lock()
+		apiCalls++
+		call := apiCalls
+		mu.Unlock()
+		switch call {
+		case 1:
+			writer.WriteHeader(http.StatusTooManyRequests)
+		case 2:
+			writer.WriteHeader(http.StatusBadGateway)
+		default:
+			writePricingResponse(writer, "ECA-1VHG102")
+		}
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		HTTPClient:   server.Client(),
+		APIBaseURL:   server.URL,
+		TokenURL:     server.URL + "/v1/oauth2/token",
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		AccountID:    "account-id",
+		Locale: Locale{
+			Site: "DE", Language: "en", Currency: "EUR", ShipToCountry: "de",
+		},
+		MaxAttempts: 3,
+		Backoff:     time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.PricingByQuantity(context.Background(), "ECA-1VHG102", 100); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if apiCalls != 3 {
+		t.Fatalf("api calls = %d, want 3", apiCalls)
+	}
+}
+
+func TestClientRejectsOversizedResponseBody(t *testing.T) {
+	t.Parallel()
+	// A hostile or broken endpoint returning an unbounded body must hit
+	// the read cap with an explicit error, not exhaust memory or be
+	// half-parsed.
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/oauth2/token" {
+			fmt.Fprint(writer, `{"access_token":"access-secret","expires_in":600}`)
+			return
+		}
+		writer.Write([]byte(strings.Repeat("a", 8*1024*1024+2)))
+	}))
+	defer server.Close()
+
+	client := testClient(t, server)
+	_, err := client.PricingByQuantity(context.Background(), "ECA-1VHG102", 100)
+	if err == nil || !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("expected size-limit error, got %v", err)
+	}
+}
+
+func TestSanitizeTruncatesAtRuneBoundary(t *testing.T) {
+	t.Parallel()
+	// Truncating at a byte offset can split a multi-byte rune and emit
+	// invalid UTF-8 into JSON error fields.
+	client := &Client{}
+	long := strings.Repeat("a", 299) + "€ tail"
+	sanitized := client.sanitize(long)
+	if !utf8.ValidString(sanitized) {
+		t.Fatalf("sanitized message is not valid UTF-8: %q", sanitized)
+	}
+	if len(sanitized) > 300 {
+		t.Fatalf("sanitized length = %d", len(sanitized))
 	}
 }

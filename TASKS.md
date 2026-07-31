@@ -23,3 +23,6 @@
 - [x] Add safe datasheet discovery and verified PDF downloads
 - [x] Add stock-aware resistor, capacitor, and inductor alternative evaluation
 - [x] Add the versioned native SQLite lookup cache and safe management commands
+- [x] Implement and live-verify the credential-free Microchip Product API
+      availability/lifecycle evidence provider (no pricing, never a
+      selected plan)

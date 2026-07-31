@@ -104,12 +104,12 @@ func sourceCandidates(
 		return compareNormalizedCandidates(candidates[left], candidates[right]) < 0
 	})
 	selected := candidates[0]
-	if reviewRequired {
-		selected.status = "review"
-		selected.code = "REVIEW_REQUIRED"
-		selected.message = "non-exact manufacturer part number requires engineering review"
-		selected.offer.SelectedPlan = nil
-	}
+	// No status squash for loose matches: normalizeOffer already returns
+	// "review" for a healthy non-exact candidate and never emits "priced"
+	// or a SelectedPlan while reviewRequired is set. Overwriting here
+	// would collapse blocking states — shortage, stock_unknown,
+	// unavailable — into a bare "review" and hide them; the offer's
+	// ReviewRequired flag records the loose match in every case.
 	return procurement.SourcedPart{
 		Demand:         demand,
 		Status:         selected.status,
