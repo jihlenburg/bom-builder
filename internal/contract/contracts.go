@@ -74,6 +74,7 @@ type SchemaBundle struct {
 	Cache        json.RawMessage `json:"cache"`
 	Output       json.RawMessage `json:"output"`
 	Providers    json.RawMessage `json:"providers"`
+	Resolutions  json.RawMessage `json:"resolutions"`
 }
 
 // CapabilitiesEnvelope is the authoritative machine discovery document.
@@ -416,4 +417,118 @@ type CachePruneEnvelope struct {
 	Prune         CachePruneResult `json:"prune"`
 	Warnings      []Issue          `json:"warnings"`
 	Errors        []Issue          `json:"errors"`
+}
+
+// ResolutionReplacement identifies one approved replacement part.
+type ResolutionReplacement struct {
+	Manufacturer string `json:"manufacturer"`
+	PartNumber   string `json:"part_number"`
+	Provider     string `json:"provider,omitempty"`
+	ProviderSKU  string `json:"provider_sku,omitempty"`
+}
+
+// ResolutionEvidenceDocument identifies one document backing an approval.
+type ResolutionEvidenceDocument struct {
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+}
+
+// ResolutionRecord is one stored human-approved resolution.
+type ResolutionRecord struct {
+	ResolutionID    string                       `json:"resolution_id"`
+	Manufacturer    string                       `json:"manufacturer"`
+	PartNumber      string                       `json:"part_number"`
+	Replacement     ResolutionReplacement        `json:"replacement"`
+	ApprovedBy      string                       `json:"approved_by"`
+	Note            string                       `json:"note,omitempty"`
+	SourceDocuments []ResolutionEvidenceDocument `json:"source_documents"`
+	Status          string                       `json:"status"`
+	ApprovedAt      time.Time                    `json:"approved_at"`
+	UpdatedAt       time.Time                    `json:"updated_at"`
+}
+
+// ResolutionEvent is one append-only audit history entry.
+type ResolutionEvent struct {
+	EventID      int64     `json:"event_id"`
+	ResolutionID string    `json:"resolution_id"`
+	Action       string    `json:"action"`
+	Actor        string    `json:"actor"`
+	Manufacturer string    `json:"manufacturer"`
+	PartNumber   string    `json:"part_number"`
+	Details      string    `json:"details,omitempty"`
+	OccurredAt   time.Time `json:"occurred_at"`
+}
+
+// ResolutionsStoreStatus summarizes one resolutions database.
+type ResolutionsStoreStatus struct {
+	Path            string `json:"path"`
+	Exists          bool   `json:"exists"`
+	SchemaVersion   int    `json:"schema_version"`
+	ActiveCount     int    `json:"active_count"`
+	SupersededCount int    `json:"superseded_count"`
+	RevokedCount    int    `json:"revoked_count"`
+	EventCount      int    `json:"event_count"`
+}
+
+// ResolutionRevokeResult is an exact preview or applied revocation.
+type ResolutionRevokeResult struct {
+	ResolutionID string            `json:"resolution_id"`
+	Matched      bool              `json:"matched"`
+	Record       *ResolutionRecord `json:"record,omitempty"`
+	ApplyToken   string            `json:"apply_token,omitempty"`
+	Applied      bool              `json:"applied"`
+}
+
+// ResolutionApproveEnvelope is emitted by resolutions approve.
+type ResolutionApproveEnvelope struct {
+	SchemaVersion string                 `json:"schema_version"`
+	Status        string                 `json:"status"`
+	ExitCode      int                    `json:"exit_code"`
+	Command       string                 `json:"command"`
+	Version       string                 `json:"version"`
+	Resolutions   ResolutionsStoreStatus `json:"resolutions"`
+	Resolution    ResolutionRecord       `json:"resolution"`
+	Superseded    *ResolutionRecord      `json:"superseded,omitempty"`
+	Warnings      []Issue                `json:"warnings"`
+	Errors        []Issue                `json:"errors"`
+}
+
+// ResolutionListEnvelope is emitted by resolutions list.
+type ResolutionListEnvelope struct {
+	SchemaVersion string                 `json:"schema_version"`
+	Status        string                 `json:"status"`
+	ExitCode      int                    `json:"exit_code"`
+	Command       string                 `json:"command"`
+	Version       string                 `json:"version"`
+	Resolutions   ResolutionsStoreStatus `json:"resolutions"`
+	Records       []ResolutionRecord     `json:"records"`
+	Warnings      []Issue                `json:"warnings"`
+	Errors        []Issue                `json:"errors"`
+}
+
+// ResolutionHistoryEnvelope is emitted by resolutions history.
+type ResolutionHistoryEnvelope struct {
+	SchemaVersion string                 `json:"schema_version"`
+	Status        string                 `json:"status"`
+	ExitCode      int                    `json:"exit_code"`
+	Command       string                 `json:"command"`
+	Version       string                 `json:"version"`
+	Resolutions   ResolutionsStoreStatus `json:"resolutions"`
+	Events        []ResolutionEvent      `json:"events"`
+	Warnings      []Issue                `json:"warnings"`
+	Errors        []Issue                `json:"errors"`
+}
+
+// ResolutionRevokeEnvelope is emitted by resolutions revoke previews and
+// applications.
+type ResolutionRevokeEnvelope struct {
+	SchemaVersion string                 `json:"schema_version"`
+	Status        string                 `json:"status"`
+	ExitCode      int                    `json:"exit_code"`
+	Command       string                 `json:"command"`
+	Version       string                 `json:"version"`
+	Resolutions   ResolutionsStoreStatus `json:"resolutions"`
+	Revoke        ResolutionRevokeResult `json:"revoke"`
+	Warnings      []Issue                `json:"warnings"`
+	Errors        []Issue                `json:"errors"`
 }

@@ -76,6 +76,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runExport(args[1:], stdin, stdout)
 	case "cache":
 		return runCache(args[1:], stdout)
+	case "resolutions":
+		return runResolutions(args[1:], stdin, stdout)
 	default:
 		return emitError(
 			stdout,
@@ -127,16 +129,19 @@ func runCapabilities(args []string, stdout io.Writer) int {
 			"price",
 			"providers list",
 			"providers check",
+			"resolutions approve",
+			"resolutions history",
+			"resolutions list",
+			"resolutions revoke",
 			"schema input",
 			"schema alternatives",
 			"schema cache",
 			"schema output",
 			"schema providers",
+			"schema resolutions",
 			"validate",
 		},
-		PlannedCommands: []string{
-			"resolutions",
-		},
+		PlannedCommands:         []string{},
 		Distributors:            []string{"mouser", "digikey", "ti", "nxp"},
 		ImplementedDistributors: []string{"mouser", "digikey", "ti", "nxp"},
 		Manufacturers:           []string{"microchip"},

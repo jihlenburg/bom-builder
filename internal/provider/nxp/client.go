@@ -69,6 +69,13 @@ type Client struct {
 
 // New validates and constructs a browser-backed NXP client.
 func New(configuration Config) (*Client, error) {
+	if !PipeTransportSupported() {
+		return nil, &Error{
+			Kind: "configuration",
+			Message: "the NXP browser pipe transport is not supported on " +
+				runtime.GOOS + " yet; select the other providers explicitly",
+		}
+	}
 	browserPath := strings.TrimSpace(configuration.BrowserPath)
 	if browserPath == "" {
 		browserPath = FindSystemBrowser()
@@ -137,6 +144,15 @@ func NewFromEnvironment() (*Client, error) {
 	})
 }
 
+// PipeTransportSupported reports whether this host can run the adapter's
+// browser transport. The DevTools connection rides on inherited file
+// descriptors 3 and 4 (--remote-debugging-pipe), which os/exec cannot
+// provide on Windows: exec.Cmd.ExtraFiles is POSIX-only. Failing here is
+// explicit and immediate instead of a confusing launch error.
+func PipeTransportSupported() bool {
+	return runtime.GOOS != "windows"
+}
+
 // FindSystemBrowser returns a supported Chrome/Edge executable path.
 func FindSystemBrowser() string {
 	if runtime.GOOS == "darwin" {
@@ -149,12 +165,43 @@ func FindSystemBrowser() string {
 			}
 		}
 	}
-	for _, command := range []string{
+	if runtime.GOOS == "windows" {
+		// Chrome and Edge do not register themselves on PATH on Windows;
+		// they install under the Program Files trees (Edge ships with the
+		// operating system) or, for per-user Chrome installs, under
+		// LocalAppData. Resolve the roots from the environment rather
+		// than hard-coding drive letters.
+		for _, root := range []string{
+			os.Getenv("ProgramFiles"),
+			os.Getenv("ProgramFiles(x86)"),
+			os.Getenv("LocalAppData"),
+		} {
+			if strings.TrimSpace(root) == "" {
+				continue
+			}
+			for _, candidate := range []string{
+				filepath.Join(root, "Google", "Chrome", "Application", "chrome.exe"),
+				filepath.Join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
+				filepath.Join(root, "Chromium", "Application", "chrome.exe"),
+			} {
+				if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+					return candidate
+				}
+			}
+		}
+	}
+	commands := []string{
 		"google-chrome",
 		"chromium",
 		"chromium-browser",
 		"microsoft-edge",
-	} {
+	}
+	if runtime.GOOS == "windows" {
+		// exec.LookPath consults PATHEXT, so extension-free names find
+		// chrome.exe/msedge.exe when a browser is on PATH after all.
+		commands = []string{"chrome", "msedge", "chromium"}
+	}
+	for _, command := range commands {
 		if path, err := exec.LookPath(command); err == nil {
 			if absolute, err := filepath.Abs(path); err == nil {
 				return absolute

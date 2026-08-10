@@ -28,9 +28,14 @@ Current Go milestone: `3.0.0-dev`
   field-by-field compatibility matrix
 - Versioned SQLite lookup cache with WAL, TTL policies, payload checksums,
   credential-free cache-only/offline operation, and safe inspection/pruning
+- Durable, audited persistence of human-approved part resolutions with
+  preview/apply revocation
 - Stable JSON stdout and process exit codes
+- Verified Windows cross-compilation in the check pipeline (the NXP
+  browser adapter is not yet available on Windows and reports that
+  explicitly)
 
-Reports and approved-resolution persistence are being ported in focused slices.
+Reports are being ported in focused slices.
 `bom-builder capabilities --full` is the authoritative way for a coding agent
 to discover what the installed build can currently do.
 
@@ -58,6 +63,13 @@ compiler.
 
 The resulting executable does not require a Go installation, an interpreter, or
 any other runtime on the target machine.
+
+Windows is a supported compilation target: `make check` cross-compiles and
+vets every package for `windows/amd64` (`make windows` runs that gate alone).
+The pure-Go SQLite driver works unchanged on Windows, and Chrome/Edge
+discovery knows the Windows installation paths. One adapter is excluded so
+far: the NXP browser transport rides on POSIX file-descriptor inheritance and
+reports `unsupported_platform` on Windows instead of failing mid-run.
 
 ## Agent discovery
 
@@ -263,6 +275,42 @@ with code `3` and keeps `engineering_review_required: true`. Add fetched
 document URL/hash pairs to `source_documents` to preserve evidence identity,
 and verify every authored value before approval.
 
+## Approved resolutions
+
+Once a human has cleared engineering review, record the decision so later
+runs can find it. BOM Builder never approves anything itself: every stored
+resolution names the person who approved it.
+
+```bash
+bom-builder schema resolutions --pretty        # the strict request contract
+bom-builder resolutions approve approval.json --pretty
+bom-builder resolutions list --manufacturer "Texas Instruments" --pretty
+bom-builder resolutions history --part TMP421-Q1 --pretty
+```
+
+An approval maps one original manufacturer/part to one approved replacement,
+optionally pinned to a provider SKU, with optional https evidence documents
+identified by URL and SHA-256. Approving a demand that already has an active
+resolution supersedes the old record; nothing is deleted, and every change
+lands in an append-only audit history.
+
+Revocation follows the same preview/apply pattern as cache pruning:
+
+```bash
+bom-builder resolutions revoke --id <resolution-id> \
+  --revoked-by "J. Ihlenburg" --reason "design change" --pretty
+bom-builder resolutions revoke --id <resolution-id> \
+  --revoked-by "J. Ihlenburg" --apply 'sha256:<token>' --pretty
+```
+
+The token is valid only while the previewed record is unchanged; a concurrent
+approval or revocation invalidates it. The store is SQLite with WAL — the same
+concurrency-safe machinery as the lookup cache — and lives in the per-user
+configuration directory by default. Override the location with
+`--resolutions-db` or the `BOM_BUILDER_RESOLUTIONS_DB` process environment
+variable; like every trusted-path override, the variable is refused from
+`.env`.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and add provider credentials. Existing process
@@ -301,6 +349,7 @@ internal/money/       exact fixed-point decimal arithmetic
 internal/procurement/ normalized offers and purchase-plan optimization
 internal/provider/    provider discovery, health, and adapters
 internal/lookupcache/ versioned SQLite normalized-result persistence
+internal/resolutions/ audited persistence of human-approved resolutions
 internal/sourcing/    provider-independent orchestration and safe totals
 internal/alternatives/ candidate loading and compatibility evaluation
 internal/documents/   evidence links and safe PDF retrieval

@@ -1,6 +1,52 @@
 # Logbook
 
-## 2026-08-10
+## 2026-08-10 (resolutions store, Windows target)
+
+- Implemented the approved-resolution store and the `resolutions
+  approve|list|history|revoke` commands — the roadmap's decision-persistence
+  keystone. A resolution records that a NAMED PERSON cleared engineering
+  review for one replacement of one original demand; the tool never clears
+  review itself (`approved_by` is mandatory, and so is `--revoked-by`).
+  Design: SQLite/WAL (`internal/resolutions`, schema v1) rather than the
+  legacy JSON-plus-rename approach, because SQLite provides the locking and
+  atomicity the TODO item demanded on every platform including Windows,
+  where the Python store needed an `os.name != "nt"` special case. One
+  active resolution per demand key (case-insensitive manufacturer+part),
+  enforced by a partial unique index; a new approval supersedes the old
+  record in the same transaction, revocation retires it, and nothing is
+  ever deleted — every change appends to an audit-event table. Records
+  carry a SHA-256 checksum and are round-trip-validated on write exactly
+  like lookup-cache entries. `resolutions revoke` reuses the cache-prune
+  preview/apply-token pattern: the token binds the previewed record's
+  content hash, so any concurrent change invalidates it. Strict JSON
+  approval requests (embedded `resolutions` schema, `schema resolutions`,
+  bundle + capabilities updated; `planned_commands` is now empty), optional
+  provider-SKU pinning, and https+SHA-256 evidence documents. The database
+  lives under `os.UserConfigDir()` — durable decisions, not reclaimable
+  cache — overridable via `--resolutions-db`/`BOM_BUILDER_RESOLUTIONS_DB`,
+  with the variable added to the restricted `.env` key list like
+  `BOM_BUILDER_CACHE_DB`. Read-only commands never create the database.
+  Consuming active resolutions during `lookup`/`price`/`alternatives` is
+  the next slice (tracked in TODO.md).
+- Made Windows a verified compilation target. `make check` now includes a
+  `windows` gate (`GOOS=windows GOARCH=amd64` build + vet of every
+  package). The audit found and fixed two real Windows defects: (1) both
+  SQLite stores built their DSN with `url.URL{Path: absolute}`, which
+  turns `C:\...` into `file://C:%5C...` — the drive letter lands in the
+  URI authority and SQLite rejects it; a shared `sqliteDSN` helper now
+  emits canonical `file:///C:/...` on Windows and byte-identical DSNs on
+  POSIX. (2) NXP browser discovery knew only macOS and PATH lookup; it now
+  probes the Windows Program Files / LocalAppData install paths for
+  Chrome/Edge/Chromium and uses PATHEXT-aware `chrome`/`msedge` names.
+  One honest limitation gated instead of papered over: the NXP adapter's
+  DevTools connection rides on inherited file descriptors 3/4
+  (`--remote-debugging-pipe` via `exec.Cmd.ExtraFiles`), which os/exec
+  does not support on Windows. `nxp.New` fails fast with a configuration
+  error there, and provider discovery reports the new
+  `unsupported_platform` status (providers schema enum extended) rather
+  than claiming readiness and dying mid-run. CRLF `.env` files were
+  already handled (bufio.ScanLines strips `\r`); `Process.Kill`,
+  `filepath` usage, and 0o600 chmods are portable as-is.
 
 - Declared the project license explicitly. The repository already carried the
   verbatim GPL-3.0 text in `LICENSE` from its first commit, but nothing named

@@ -14,7 +14,7 @@ and quality item from the Python roadmap.
 - [x] `capabilities --full` and safe provider configuration discovery
 - [x] Add focused `price`, `lookup`, and `providers check` commands
 - [x] Add focused `cache status|list|verify|prune` commands
-- [ ] Add focused `resolutions` commands
+- [x] Add focused `resolutions approve|list|history|revoke` commands
 - [x] Keep all operational commands non-interactive by default
 - [x] Add concise command help with copyable human and agent examples
 - [ ] Complete provider selection; `--providers auto`, every explicit native
@@ -44,8 +44,13 @@ and quality item from the Python roadmap.
 - [x] Define canonical ordering for aggregated parts and Mouser price breaks
 - [x] SQLite normalized-response cache with migrations, WAL, expiry, checksums,
       adapter/context identity, and source-request provenance
-- [ ] Concurrent-safe approved-resolution store with locking, atomic writes,
-      audit history, and exact destructive-operation previews
+- [x] Concurrent-safe approved-resolution store with locking, atomic writes,
+      audit history, and exact destructive-operation previews (SQLite/WAL;
+      one active resolution per demand, supersede on re-approval,
+      preview/apply revocation)
+- [ ] Consume active resolutions during `lookup`/`price`/`alternatives` so an
+      approved replacement is sourced automatically and reported with its
+      resolution identity
 - [ ] Complete execution policies; run-wide deadline, cancellation, bounded
       Mouser retry, and key rotation are implemented, while per-provider
       policies, circuit breakers, and API budgets remain
@@ -162,8 +167,10 @@ and quality item from the Python roadmap.
       quality, lead time, lifecycle, multi-source resilience, and landed cost
       remain
 - [x] Return a field-by-field equal/better/worse/unknown compatibility matrix
-- [ ] Complete decision persistence; recommended-for-review and rejected reasons
-      are in JSON, while approvals, reports, and audit logs remain
+- [ ] Complete decision persistence; recommended-for-review and rejected
+      reasons are in JSON, and the `resolutions` store now records approvals
+      with an append-only audit history, while report generation and the
+      alternatives-to-approval hand-off remain
 - [x] Add deterministic fixtures for compatible, missing-rating, package,
       dielectric-alias, DCR, stock, and mixed-currency cases
 
@@ -195,6 +202,8 @@ and quality item from the Python roadmap.
 - [ ] Add CI for tests, race detector, vet, static analysis, schema
       compatibility, cross-builds, and releases
 - [ ] Cross-compile release binaries for macOS, Linux, and Windows
+      (the `windows/amd64` build+vet gate already runs in `make check`;
+      release packaging remains)
 - [ ] Add checksums, SBOMs, signing, and macOS notarization
 - [ ] Add shell completions and Claude/Codex/shell/CI automation guides
 

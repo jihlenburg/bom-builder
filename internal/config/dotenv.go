@@ -32,6 +32,7 @@ var restrictedDotEnvKeys = map[string]bool{
 	"BOM_BUILDER_NXP_BROWSER":            true,
 	"BOM_BUILDER_MICROCHIP_PRODUCTS_URL": true,
 	"BOM_BUILDER_CACHE_DB":               true,
+	"BOM_BUILDER_RESOLUTIONS_DB":         true,
 }
 
 // LoadDotEnv adds values from path to the environment without overriding

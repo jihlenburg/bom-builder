@@ -28,3 +28,9 @@
 - [x] Declare GPL-3.0-or-later: document the license in `README.md` and carry
       the SPDX identifier in every Go source file
 - [x] Retire the archived Python implementation and its `legacy/` tree
+- [x] Add the concurrent-safe, audited approved-resolution store and the
+      `resolutions approve|list|history|revoke` commands
+- [x] Make Windows a verified compilation target: `windows/amd64` cross-build
+      and vet in `make check`, portable SQLite DSNs, Windows browser
+      discovery, and an explicit `unsupported_platform` state for the NXP
+      pipe transport

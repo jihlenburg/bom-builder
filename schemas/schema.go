@@ -50,11 +50,16 @@ func Bundle() (contract.SchemaBundle, error) {
 	if err != nil {
 		return contract.SchemaBundle{}, err
 	}
+	resolutions, err := Get("resolutions")
+	if err != nil {
+		return contract.SchemaBundle{}, err
+	}
 	return contract.SchemaBundle{
 		Input:        input,
 		Alternatives: alternatives,
 		Cache:        cache,
 		Output:       output,
 		Providers:    providers,
+		Resolutions:  resolutions,
 	}, nil
 }

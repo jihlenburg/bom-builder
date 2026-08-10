@@ -116,9 +116,15 @@ func nxpCapability() contract.ProviderCapability {
 		SystemBrowser:          browser,
 	})
 	capability.Implemented = true
-	if capability.Configured {
+	switch {
+	case !nxp.PipeTransportSupported():
+		// The browser transport needs POSIX descriptor inheritance, so a
+		// found browser does not make the adapter usable on this host.
+		capability.Configured = false
+		capability.Status = "unsupported_platform"
+	case capability.Configured:
 		capability.Status = "ready"
-	} else {
+	default:
 		capability.Status = "unconfigured"
 	}
 	return capability

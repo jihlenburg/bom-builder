@@ -25,7 +25,10 @@ func helpRequest(args []string) (string, bool) {
 				return "", true
 			}
 			target := args[0]
-			if (target == "cache" || target == "documents" || target == "providers") &&
+			if (target == "cache" ||
+				target == "documents" ||
+				target == "providers" ||
+				target == "resolutions") &&
 				len(args) > 1 &&
 				args[1] != "--help" &&
 				args[1] != "-h" &&
@@ -75,6 +78,7 @@ Commands:
   export ec-bom <file|->   Write a Eurocircuits assembly BOM (upload-ready CSV)
   providers list           Report safe provider configuration facts
   providers check          Run configuration or bounded live checks
+  resolutions <subcommand> Record and audit human-approved part resolutions
   schema <target>          Return a public JSON Schema
 
 Run ` + "`bom-builder help <command>`" + ` for copyable examples.
@@ -229,6 +233,63 @@ token applies only while the selected entry set and payload hashes are unchanged
 The default scope is expired entries; ` + "`--all`" + ` selects every entry.
 	`,
 	"schema": `Usage:
-  bom-builder schema <input|alternatives|cache|output|providers> [--pretty]
+  bom-builder schema <input|alternatives|cache|output|providers|resolutions>
+    [--pretty]
+	`,
+	"resolutions": `Usage:
+  bom-builder resolutions approve <request.json|->
+    [--resolutions-db <path>] [--pretty]
+  bom-builder resolutions list [--manufacturer <name>] [--part <mpn>]
+    [--limit <1..1000>] [--include-inactive] [--resolutions-db <path>] [--pretty]
+  bom-builder resolutions history [--manufacturer <name>] [--part <mpn>]
+    [--limit <1..1000>] [--resolutions-db <path>] [--pretty]
+  bom-builder resolutions revoke --id <resolution-id> --revoked-by <name>
+    [--reason <text>] [--apply <preview-token>] [--resolutions-db <path>] [--pretty]
+
+A resolution records that a named person cleared engineering review for one
+replacement of one original part. BOM Builder never approves anything itself.
+Approving a demand that already has an active resolution supersedes the old
+one; every change lands in an append-only audit history.
+
+The request schema is available with ` + "`bom-builder schema resolutions`" + `.
+The database defaults to the per-user configuration directory; override with
+--resolutions-db or the BOM_BUILDER_RESOLUTIONS_DB process environment
+variable (refused from .env, like every trusted-path override).
+
+Example:
+  bom-builder resolutions approve approval.json --pretty
+	`,
+	"resolutions approve": `Usage:
+  bom-builder resolutions approve <request.json|->
+    [--resolutions-db <path>] [--pretty]
+
+The strict JSON request names the original manufacturer/part, the approved
+replacement (optionally pinned to one provider SKU), the approving person,
+and optional https evidence documents with SHA-256 hashes.
+	`,
+	"resolutions list": `Usage:
+  bom-builder resolutions list [--manufacturer <name>] [--part <mpn>]
+    [--limit <1..1000>] [--include-inactive] [--resolutions-db <path>] [--pretty]
+
+Filters match case-insensitively. Without --include-inactive only active
+resolutions are returned.
+	`,
+	"resolutions history": `Usage:
+  bom-builder resolutions history [--manufacturer <name>] [--part <mpn>]
+    [--limit <1..1000>] [--resolutions-db <path>] [--pretty]
+
+Returns the append-only audit trail (approved, superseded, revoked), newest
+event first.
+	`,
+	"resolutions revoke": `Usage:
+  bom-builder resolutions revoke --id <resolution-id> --revoked-by <name>
+    [--reason <text>] [--resolutions-db <path>] [--pretty]
+  bom-builder resolutions revoke --id <resolution-id> --revoked-by <name>
+    --apply <preview-token> [--reason <text>] [--resolutions-db <path>] [--pretty]
+
+Without ` + "`--apply`" + ` this is a read-only exact preview. The returned
+token applies only while the previewed record is unchanged; any concurrent
+approval or revocation invalidates it. Revocation retires the resolution but
+keeps its full audit history.
 	`,
 }

@@ -162,8 +162,7 @@ func Open(path string) (*Store, error) {
 	} {
 		pragmas.Add("_pragma", pragma)
 	}
-	dsn := (&url.URL{Scheme: "file", Path: absolute, RawQuery: pragmas.Encode()}).String()
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", sqliteDSN(absolute, pragmas))
 	if err != nil {
 		return nil, &Error{Kind: "open", Message: "could not initialize SQLite"}
 	}
@@ -769,6 +768,19 @@ func pruneToken(scope string, identities []pruneIdentity) string {
 
 func constantTimeTextEqual(left, right string) bool {
 	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
+}
+
+// sqliteDSN renders one absolute path as a portable SQLite file URI. A raw
+// Windows path inside url.URL.Path would surface the drive letter as the URI
+// authority ("file://C:%5C..."), which SQLite rejects; the canonical form on
+// every platform is a slash-separated path after "file://" with the drive
+// letter as the first segment ("file:///C:/...").
+func sqliteDSN(absolute string, query url.Values) string {
+	path := filepath.ToSlash(absolute)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}).String()
 }
 
 func validatedPath(path string) (string, error) {
