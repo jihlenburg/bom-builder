@@ -1,5 +1,38 @@
 # Logbook
 
+## 2026-08-10 (resolution-aware sourcing)
+
+- Closed the loop on the resolutions store: `lookup` and `price` now
+  consume it. A `ResolutionAwareResolver` middleware in `internal/sourcing`
+  wraps the multi-provider resolver; a demand with an active resolution is
+  redirected to the approved replacement before provider lookup, the BOM
+  line keeps its original identity in `parts[].demand`, and the result
+  carries the approval's provenance in a new `parts[].resolution` block
+  (resolution id, approver, timestamp, original and replacement identity,
+  optional provider/SKU pin, `review_lifted`). The middleware sits above
+  the multi-resolver and below nothing that caches, so per-provider cache
+  entries key on the replacement demand they actually looked up —
+  annotations are never cached and cache identity stays truthful.
+- Review lifting is deliberately a single narrow case: the human approval
+  pinned an exact provider SKU, that very SKU came back review-required
+  (the packaging-variant situation the resolver flow records), and its
+  stock-verified candidate plan covers the demand. Then the offer is
+  promoted to the selected plan and the part becomes `priced`, because the
+  stored approval IS the completed engineering review of that SKU. A
+  different SKU, a different provider, unverified stock, a short plan, an
+  unpinned resolution, or an already-safe result all leave the outcome
+  untouched — eight middleware tests pin these branches down.
+- Wiring: resolutions apply by default when the database exists;
+  `--ignore-resolutions` opts a run out; a missing database is a silent
+  no-op and read paths never create it (the CLI reuses the
+  existing-only open). A broken store fails the lookup explicitly rather
+  than silently skipping — the operator asked for resolution-aware
+  sourcing. The CLI test suite now isolates itself from any developer's
+  real resolutions database via BOM_BUILDER_RESOLUTIONS_DB in TestMain.
+- Output schema: `parts[].resolution` documented as `appliedResolution`
+  in output.schema.json (additive; existing consumers unaffected).
+  `alternatives` does not consume resolutions yet — tracked in TODO.md.
+
 ## 2026-08-10 (CI, CSV formula guard)
 
 - Added GitHub Actions CI: gofmt cleanliness plus the full `make check`

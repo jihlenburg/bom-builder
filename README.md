@@ -315,6 +315,21 @@ configuration directory by default. Override the location with
 variable; like every trusted-path override, the variable is refused from
 `.env`.
 
+`lookup` and `price` consume the store: a demand with an active resolution is
+sourced as its approved replacement, the BOM line keeps its original
+identity, and the result carries the approval's provenance in
+`parts[].resolution` (resolution id, approver, timestamp, replacement).
+`--ignore-resolutions` skips the store for one run; a missing database is a
+silent no-op, and read paths never create it.
+
+Review lifting is deliberately narrow. A review-required offer becomes a
+selected plan only when the human approval pinned the exact provider SKU
+that came back review-required and its stock-verified plan covers the
+demand — the stored approval *is* the completed engineering review of that
+SKU. Anything looser (different SKU, different provider, unverified stock,
+no pin) keeps the normal review-required outcome, and the envelope reports
+`review_lifted` explicitly either way.
+
 ## Interactive mode
 
 ```bash

@@ -32,6 +32,7 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
 	"github.com/jihlenburg/bom-builder/internal/provider/nxp"
 	"github.com/jihlenburg/bom-builder/internal/provider/ti"
+	"github.com/jihlenburg/bom-builder/internal/resolutions"
 	"github.com/jihlenburg/bom-builder/internal/sourcing"
 	"github.com/jihlenburg/bom-builder/schemas"
 )
@@ -328,6 +329,13 @@ func runLookup(args []string, stdout io.Writer) int {
 	if err != nil {
 		return emitError(stdout, "lookup", "INVALID_CACHE_CONFIGURATION", err.Error(), contract.ExitInput, pretty)
 	}
+	remaining, resolutionStore, err := consumeResolutionSourcingFlags(remaining)
+	if err != nil {
+		return emitError(stdout, "lookup", "INVALID_ARGUMENT", err.Error(), contract.ExitInput, pretty)
+	}
+	if resolutionStore != nil {
+		defer resolutionStore.Close()
+	}
 	if len(remaining) != 1 {
 		return emitError(
 			stdout,
@@ -398,6 +406,7 @@ func runLookup(args []string, stdout io.Writer) int {
 		deadline,
 		selectedProviders,
 		cacheConfig,
+		resolutionStore,
 		stdout,
 		pretty,
 	)
@@ -427,6 +436,13 @@ func runPrice(args []string, stdin io.Reader, stdout io.Writer) int {
 	remaining, cacheConfig, err := consumeCacheFlags(remaining)
 	if err != nil {
 		return emitError(stdout, "price", "INVALID_CACHE_CONFIGURATION", err.Error(), contract.ExitInput, pretty)
+	}
+	remaining, resolutionStore, err := consumeResolutionSourcingFlags(remaining)
+	if err != nil {
+		return emitError(stdout, "price", "INVALID_ARGUMENT", err.Error(), contract.ExitInput, pretty)
+	}
+	if resolutionStore != nil {
+		defer resolutionStore.Close()
 	}
 	if !hasUnits {
 		return emitError(stdout, "price", "UNITS_REQUIRED", "--units is required", contract.ExitInput, pretty)
@@ -493,9 +509,36 @@ func runPrice(args []string, stdin io.Reader, stdout io.Writer) int {
 		deadline,
 		selectedProviders,
 		cacheConfig,
+		resolutionStore,
 		stdout,
 		pretty,
 	)
+}
+
+// consumeResolutionSourcingFlags resolves how a pricing command consumes
+// the approved-resolutions store. Resolutions apply by default when the
+// database exists; --ignore-resolutions opts one run out, and a missing
+// database is a silent no-op — read paths never create it.
+func consumeResolutionSourcingFlags(
+	args []string,
+) ([]string, *resolutions.Store, error) {
+	args, ignore, err := consumeFlag(args, "--ignore-resolutions")
+	if err != nil {
+		return nil, nil, err
+	}
+	args, path, pretty, err := consumeResolutionsCommandCommon(args, false)
+	_ = pretty
+	if err != nil {
+		return nil, nil, err
+	}
+	if ignore {
+		return args, nil, nil
+	}
+	store, _, err := openExistingResolutions(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, store, nil
 }
 
 type providerRuntime struct {
@@ -524,6 +567,7 @@ func executePricing(
 	deadline time.Duration,
 	providerNames []string,
 	cacheConfig lookupcache.Config,
+	resolutionStore *resolutions.Store,
 	stdout io.Writer,
 	pretty bool,
 ) int {
@@ -539,9 +583,18 @@ func executePricing(
 			Name: runtime.name, Resolver: runtime.resolver,
 		})
 	}
-	resolver, err := sourcing.NewMultiResolver(bindings)
+	var resolver sourcing.Resolver
+	multi, err := sourcing.NewMultiResolver(bindings)
 	if err != nil {
 		return emitError(stdout, command, "INTERNAL_ERROR", err.Error(), contract.ExitInternal, pretty)
+	}
+	resolver = multi
+	if resolutionStore != nil {
+		resolutionAware, wrapErr := sourcing.NewResolutionAware(resolutionStore, multi)
+		if wrapErr != nil {
+			return emitError(stdout, command, "INTERNAL_ERROR", wrapErr.Error(), contract.ExitInternal, pretty)
+		}
+		resolver = resolutionAware
 	}
 	started := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)

@@ -20,6 +20,17 @@ import (
 
 func TestMain(testingMain *testing.M) {
 	_ = os.Setenv("BOM_BUILDER_CACHE_POLICY", "off")
+	// Isolate every test from a developer's real resolutions database:
+	// point the default at a path that never exists unless a test
+	// explicitly overrides it.
+	isolated, err := os.MkdirTemp("", "bom-builder-cli-test-")
+	if err == nil {
+		defer os.RemoveAll(isolated)
+		_ = os.Setenv(
+			"BOM_BUILDER_RESOLUTIONS_DB",
+			filepath.Join(isolated, "absent-resolutions.sqlite3"),
+		)
+	}
 	os.Exit(testingMain.Run())
 }
 

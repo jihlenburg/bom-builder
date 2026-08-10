@@ -3,7 +3,11 @@
 
 package procurement
 
-import "github.com/jihlenburg/bom-builder/internal/money"
+import (
+	"time"
+
+	"github.com/jihlenburg/bom-builder/internal/money"
+)
 
 // Demand is one deterministic aggregated sourcing requirement.
 type Demand struct {
@@ -53,13 +57,30 @@ type Offer struct {
 
 // SourcedPart combines one demand with its provider outcome.
 type SourcedPart struct {
-	Demand         Demand  `json:"demand"`
-	Status         string  `json:"status"`
-	Offer          *Offer  `json:"offer,omitempty"`
-	Offers         []Offer `json:"offers,omitempty"`
-	CandidateCount int     `json:"candidate_count"`
-	IssueCode      string  `json:"issue_code,omitempty"`
-	IssueMessage   string  `json:"issue_message,omitempty"`
+	Demand         Demand             `json:"demand"`
+	Status         string             `json:"status"`
+	Offer          *Offer             `json:"offer,omitempty"`
+	Offers         []Offer            `json:"offers,omitempty"`
+	CandidateCount int                `json:"candidate_count"`
+	IssueCode      string             `json:"issue_code,omitempty"`
+	IssueMessage   string             `json:"issue_message,omitempty"`
+	Resolution     *AppliedResolution `json:"resolution,omitempty"`
+}
+
+// AppliedResolution records that a stored human approval redirected this
+// demand to its approved replacement. It is provenance for a purchase
+// decision: the plan traces back to the named person who cleared review.
+type AppliedResolution struct {
+	ResolutionID            string    `json:"resolution_id"`
+	ApprovedBy              string    `json:"approved_by"`
+	ApprovedAt              time.Time `json:"approved_at"`
+	OriginalManufacturer    string    `json:"original_manufacturer"`
+	OriginalPartNumber      string    `json:"original_part_number"`
+	ReplacementManufacturer string    `json:"replacement_manufacturer"`
+	ReplacementPartNumber   string    `json:"replacement_part_number"`
+	Provider                string    `json:"provider,omitempty"`
+	ProviderSKU             string    `json:"provider_sku,omitempty"`
+	ReviewLifted            bool      `json:"review_lifted"`
 }
 
 // PricingSummary contains only safely selected, common-currency totals.

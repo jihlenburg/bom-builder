@@ -498,6 +498,16 @@ func (store *Store) Revoke(
 	return result, nil
 }
 
+// ActiveResolution returns the active record for one demand identity.
+// Manufacturer and part number match case-insensitively, mirroring the
+// approval key.
+func (store *Store) ActiveResolution(
+	ctx context.Context,
+	manufacturer, partNumber string,
+) (Record, bool, error) {
+	return activeRecordForKey(ctx, store.db, demandKey(manufacturer, partNumber))
+}
+
 // StoreStatus returns record counts by status and audit-event volume.
 func (store *Store) StoreStatus(ctx context.Context) (Status, error) {
 	status := Status{Path: store.path, Exists: true}

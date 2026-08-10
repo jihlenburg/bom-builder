@@ -73,9 +73,12 @@ and quality item from the Python roadmap.
       audit history, and exact destructive-operation previews (SQLite/WAL;
       one active resolution per demand, supersede on re-approval,
       preview/apply revocation)
-- [ ] Consume active resolutions during `lookup`/`price`/`alternatives` so an
-      approved replacement is sourced automatically and reported with its
-      resolution identity
+- [x] Consume active resolutions during `lookup`/`price`: an approved
+      replacement is sourced automatically, the BOM line keeps its original
+      identity, provenance lands in `parts[].resolution`, and review is
+      lifted only for the exact pinned provider SKU with a stock-verified
+      covering plan (`--ignore-resolutions` opts out per run)
+- [ ] Consume active resolutions during `alternatives` as well
 - [ ] Complete execution policies; run-wide deadline, cancellation, bounded
       Mouser retry, and key rotation are implemented, while per-provider
       policies, circuit breakers, and API budgets remain

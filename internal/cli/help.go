@@ -130,11 +130,17 @@ Example:
 	"lookup": `Usage:
   bom-builder lookup <mpn> --manufacturer <name>
     [--quantity <n>] [--providers <auto|list>] [--deadline <duration>]
-    [cache-options] [--pretty]
+    [cache-options] [--resolutions-db <path>] [--ignore-resolutions]
+    [--pretty]
 
 Example:
   bom-builder lookup RC0402FR-0710KL --manufacturer Yageo \
     --quantity 100 --providers mouser,digikey --pretty
+
+When the approved-resolutions database exists, a demand with an active
+resolution is sourced as its approved replacement and the result carries
+the approval's identity in parts[].resolution. --ignore-resolutions skips
+the store for one run; a missing database is a silent no-op.
 
 The "microchip" provider (explicit selection only) returns
 credential-free factory availability and lifecycle EVIDENCE without
@@ -143,11 +149,16 @@ pricing; such results always remain review-required.
 	"price": `Usage:
   bom-builder price <design.json|-> [...] --units <n>
     [--attrition <0..1>] [--providers <auto|list>]
-    [--deadline <duration>] [cache-options] [--pretty]
+    [--deadline <duration>] [cache-options]
+    [--resolutions-db <path>] [--ignore-resolutions] [--pretty]
 
 Example:
   bom-builder price design.json --units 100 --attrition 0.02 \
     --providers auto --pretty
+
+Demands with an active approved resolution are sourced as their approved
+replacement (see ` + "`bom-builder help resolutions`" + `); each affected
+part reports the approval's identity in parts[].resolution.
 `,
 	"documents": `Usage:
   bom-builder documents list <mpn> --manufacturer <name> [options]
