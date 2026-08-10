@@ -35,15 +35,9 @@ func Check(
 			continue
 		}
 		if live {
-			switch capability.Name {
-			case "mouser":
-				capability = checkMouser(ctx, capability)
-			case "digikey":
-				capability = checkDigiKey(ctx, capability)
-			case "ti":
-				capability = checkTI(ctx, capability)
-			case "microchip":
-				capability = checkMicrochip(ctx, capability)
+			if definition, exists := ByName(capability.Name); exists &&
+				definition.LiveCheck != nil {
+				capability = definition.LiveCheck(ctx, capability)
 			}
 			if capability.Implemented && capability.Status == "failed" {
 				exitCode = contract.ExitProvider
@@ -258,9 +252,9 @@ func selectedNames(names []string) (map[string]struct{}, error) {
 	if len(names) == 0 {
 		names = []string{"all"}
 	}
-	known := map[string]struct{}{
-		"mouser": {}, "digikey": {}, "ti": {},
-		"microchip": {}, "ecb": {}, "openai": {},
+	known := map[string]struct{}{}
+	for _, name := range AllNames() {
+		known[name] = struct{}{}
 	}
 	selected := map[string]struct{}{}
 	for _, name := range names {

@@ -112,8 +112,16 @@ Prices are JSON strings such as `"0.005000"` so calling agents never receive
 binary floating-point approximations. An offer becomes `selected_plan` only
 when the MPN is exact and reported stock covers the purchase quantity.
 Non-exact candidates remain review-required. `--providers auto` uses every
-configured native provider. Explicit provider selection never requires
-credentials for providers outside that selection.
+configured native provider, and exclusions narrow that automatic set:
+`--providers -ti` (or `auto,-ti`) means "auto without TI". Explicit
+provider selection never requires credentials for providers outside that
+selection, and exclusions cannot be mixed with explicit names — with an
+explicit list, simply leave the unwanted provider out.
+
+Every provider is declared once in an in-code registry
+(`internal/provider/registry.go`): construction, discovery, health
+checks, selection, and capability lists all derive from it, so adding the
+next distributor is one adapter package plus one registry entry.
 
 TI direct-store lookups are automatically skipped for non-TI manufacturers.
 Known non-active lifecycle states and generic-to-orderable part resolutions

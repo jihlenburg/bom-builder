@@ -137,6 +137,11 @@ Example:
   bom-builder lookup RC0402FR-0710KL --manufacturer Yageo \
     --quantity 100 --providers mouser,digikey --pretty
 
+--providers takes "auto" (every configured distributor), an explicit
+comma-separated list, or exclusions against the automatic set:
+"--providers -ti" and "--providers auto,-ti" both mean "auto without TI".
+Exclusions cannot be combined with explicit names.
+
 When the approved-resolutions database exists, a demand with an active
 resolution is sourced as its approved replacement and the result carries
 the approval's identity in parts[].resolution. --ignore-resolutions skips

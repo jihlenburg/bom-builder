@@ -17,9 +17,9 @@ and quality item from the Python roadmap.
 - [x] Add focused `resolutions approve|list|history|revoke` commands
 - [x] Keep all operational commands non-interactive by default
 - [x] Add concise command help with copyable human and agent examples
-- [ ] Complete provider selection; `--providers auto`, every explicit native
-      provider, and combined selection work without unrelated credentials,
-      while exclude syntax remains
+- [x] Complete provider selection; `--providers auto`, explicit lists, and
+      exclusions against the automatic set (`-ti`, `auto,-ti`) all work
+      without unrelated credentials, driven by the provider registry
 - [ ] Add `--output -`, `--allow-partial`, `--fail-on`, and idempotent artifact
       output policies
 - [ ] Complete run envelopes; run IDs, timing, provider request counts, cache
@@ -89,6 +89,15 @@ and quality item from the Python roadmap.
 - [ ] Make interrupted runs resumable from cached normalized offers
 
 ## Provider adapters
+
+- [x] Provider registry: every provider declared once in
+      `internal/provider/registry.go` (construction, discovery, health,
+      selection, capability lists), with the full add-a-provider checklist
+      in its doc comment — groundwork for the Farnell adapter
+- [ ] Farnell/element14 adapter over the documented Product Search API
+      when API access lands: storefront/locale in the cache context from
+      day one (Digi-Key locale handling is the template), recorded
+      fixtures from real responses, live verification before advertising
 
 - [x] Audit the historical Digi-Key fixes against the Go adapter: OAuth token
       reuse and refresh safety, normalized locale/account headers, MyPricing

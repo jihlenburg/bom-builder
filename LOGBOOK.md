@@ -1,5 +1,32 @@
 # Logbook
 
+## 2026-08-10 (provider registry, exclude syntax)
+
+- Consolidated all provider knowledge into one in-code registry
+  (`internal/provider/registry.go`). Each provider is one Definition:
+  name, kind, auto-selectability, runtime constructor, discovery
+  capability, and live health check. Discovery, `providers check`,
+  runtime construction in the CLI, provider selection, the capabilities
+  distributor/manufacturer lists, and the cache-list provider filter all
+  derive from it. The NXP removal had just demonstrated how scattered
+  this knowledge was (seven hand-maintained lists); with Farnell
+  potentially arriving soon, the next adapter is now one package plus one
+  registry entry. The registry's doc comment carries the honest complete
+  checklist, including the places a registry cannot reach (lookupcache
+  identity, restricted .env keys, schema enums, help text).
+- Completed the provider-selection roadmap item with exclude syntax:
+  `--providers -ti` and `--providers auto,-ti` both mean "the automatic
+  set without TI", validated against the registry. Exclusions cannot be
+  combined with explicit names (with an explicit list, leave the unwanted
+  provider out), `auto` cannot be mixed with explicit names, and
+  excluding every automatic provider is an explicit error. Table-driven
+  tests cover the full matrix including cache-only policies.
+- Two truthfulness fixes fell out: `cache list --provider microchip` was
+  wrongly rejected (the hardcoded filter list predated the microchip
+  provider — registry-driven now), and the ecb service capability now
+  reports implemented/ready instead of pending, since the FX layer
+  shipped today.
+
 ## 2026-08-10 (NXP adapter removed)
 
 - Removed the NXP Store adapter (`internal/provider/nxp`, ~2600 lines with

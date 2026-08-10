@@ -14,19 +14,9 @@ import (
 
 // Discover returns provider configuration facts without contacting a network.
 func Discover() contract.ProviderDiscoveryEnvelope {
-	providers := []contract.ProviderCapability{
-		mouserCapability(),
-		digiKeyCapability(),
-		tiCapability(),
-		microchipCapability(),
-		serviceCapability("ecb", true, contract.ProviderDetails{
-			Implementation:         "pending",
-			AuthenticationRequired: boolPointer(false),
-		}),
-		serviceCapability("openai", envSet("OPENAI_API_KEY"), contract.ProviderDetails{
-			Implementation: "pending",
-			Model:          "not_selected",
-		}),
+	providers := []contract.ProviderCapability{}
+	for _, definition := range definitions() {
+		providers = append(providers, definition.Capability())
 	}
 	return contract.ProviderDiscoveryEnvelope{
 		SchemaVersion: contract.SchemaVersion,

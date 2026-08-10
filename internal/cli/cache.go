@@ -16,6 +16,7 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/app"
 	"github.com/jihlenburg/bom-builder/internal/contract"
 	"github.com/jihlenburg/bom-builder/internal/lookupcache"
+	"github.com/jihlenburg/bom-builder/internal/provider"
 )
 
 func runCache(args []string, stdout io.Writer) int {
@@ -424,11 +425,11 @@ func emitCacheCommandError(
 	)
 }
 
+// isNativeProvider accepts any provider that participates in the lookup
+// cache. Registry-driven, so a new adapter is filterable in cache list
+// without touching this file. (Until 2026-08-10 the hardcoded list here
+// omitted microchip, so cached microchip entries could not be filtered.)
 func isNativeProvider(name string) bool {
-	switch name {
-	case "mouser", "digikey", "ti":
-		return true
-	default:
-		return false
-	}
+	definition, exists := provider.ByName(name)
+	return exists && definition.NewRuntime != nil
 }

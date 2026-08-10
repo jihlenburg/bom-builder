@@ -29,10 +29,6 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/money"
 	"github.com/jihlenburg/bom-builder/internal/procurement"
 	"github.com/jihlenburg/bom-builder/internal/provider"
-	"github.com/jihlenburg/bom-builder/internal/provider/digikey"
-	"github.com/jihlenburg/bom-builder/internal/provider/microchip"
-	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
-	"github.com/jihlenburg/bom-builder/internal/provider/ti"
 	"github.com/jihlenburg/bom-builder/internal/resolutions"
 	"github.com/jihlenburg/bom-builder/internal/sourcing"
 	"github.com/jihlenburg/bom-builder/schemas"
@@ -150,9 +146,9 @@ func runCapabilities(args []string, stdout io.Writer) int {
 			"validate",
 		},
 		PlannedCommands:         []string{},
-		Distributors:            []string{"mouser", "digikey", "ti"},
-		ImplementedDistributors: []string{"mouser", "digikey", "ti"},
-		Manufacturers:           []string{"microchip"},
+		Distributors:            provider.DistributorNames(),
+		ImplementedDistributors: provider.DistributorNames(),
+		Manufacturers:           provider.ManufacturerNames(),
 		Services:                []string{"ecb", "openai"},
 		ArtifactFormats:         []string{"json", "pdf", "ec-bom-csv"},
 		Features: contract.Features{
@@ -686,114 +682,43 @@ func newProviderRuntimes(
 		}
 	}
 	runtimes := make([]providerRuntime, 0, len(providerNames))
+	cacheOnly := cacheConfig.Policy == lookupcache.PolicyOnly ||
+		cacheConfig.Policy == lookupcache.PolicyOffline
 	for _, name := range providerNames {
+		definition, exists := provider.ByName(name)
+		if !exists || definition.NewRuntime == nil {
+			closeProviderRuntimeResources(runtimes, cacheSession)
+			return nil, nil, &providerRuntimeSetupError{
+				provider: name,
+				kind:     "unsupported",
+				cause:    errors.New("provider " + name + " has no native pricing adapter"),
+			}
+		}
 		var runtime providerRuntime
-		cacheOnly := cacheConfig.Policy == lookupcache.PolicyOnly ||
-			cacheConfig.Policy == lookupcache.PolicyOffline
 		if cacheOnly {
-			switch name {
-			case "mouser", "digikey", "ti", "microchip":
-				runtime = providerRuntime{
-					name:         name,
-					requestCount: func() int { return 0 },
-				}
-			default:
-				closeProviderRuntimeResources(runtimes, cacheSession)
-				return nil, nil, &providerRuntimeSetupError{
-					provider: name,
-					kind:     "unsupported",
-					cause:    errors.New("provider " + name + " has no native pricing adapter"),
-				}
+			// Cache-only policies never construct provider clients, so
+			// credentials are not required to read cached results.
+			runtime = providerRuntime{
+				name:         definition.Name,
+				requestCount: func() int { return 0 },
 			}
 		} else {
-			switch name {
-			case "mouser":
-				client, err := mouser.NewFromEnvironment()
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "configuration", cause: err,
-					}
-				}
-				resolver, err := mouser.NewResolver(client)
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "internal", cause: err,
-					}
-				}
-				runtime = providerRuntime{
-					name:         name,
-					resolver:     resolver,
-					requestCount: client.RequestCount,
-				}
-			case "digikey":
-				client, err := digikey.NewFromEnvironment()
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "configuration", cause: err,
-					}
-				}
-				resolver, err := digikey.NewResolver(client)
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "internal", cause: err,
-					}
-				}
-				runtime = providerRuntime{
-					name:         name,
-					resolver:     resolver,
-					requestCount: client.RequestCount,
-				}
-			case "ti":
-				client, err := ti.NewFromEnvironment()
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "configuration", cause: err,
-					}
-				}
-				resolver, err := ti.NewResolver(client)
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "internal", cause: err,
-					}
-				}
-				runtime = providerRuntime{
-					name:         name,
-					resolver:     resolver,
-					requestCount: client.RequestCount,
-				}
-			case "microchip":
-				client, err := microchip.NewFromEnvironment()
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "configuration", cause: err,
-					}
-				}
-				resolver, err := microchip.NewResolver(client)
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "internal", cause: err,
-					}
-				}
-				runtime = providerRuntime{
-					name:         name,
-					resolver:     resolver,
-					requestCount: client.RequestCount,
-				}
-			default:
+			constructed, runtimeErr := definition.NewRuntime()
+			if runtimeErr != nil {
 				closeProviderRuntimeResources(runtimes, cacheSession)
-				return nil, nil, &providerRuntimeSetupError{
-					provider: name,
-					kind:     "unsupported",
-					cause:    errors.New("provider " + name + " has no native pricing adapter"),
+				kind := "configuration"
+				if provider.IsInternalRuntimeError(runtimeErr) {
+					kind = "internal"
 				}
+				return nil, nil, &providerRuntimeSetupError{
+					provider: name, kind: kind, cause: runtimeErr,
+				}
+			}
+			runtime = providerRuntime{
+				name:         constructed.Name,
+				resolver:     constructed.Resolver,
+				requestCount: constructed.RequestCount,
+				close:        constructed.Close,
 			}
 		}
 		cachedResolver, err := cacheSession.Resolver(
@@ -1035,41 +960,118 @@ func parseDeadline(value string, configured bool) (time.Duration, error) {
 
 var errNoConfiguredProviders = errors.New("no configured native pricing provider")
 
+// resolveProviderSelection turns one --providers value into a concrete
+// provider list. Tokens prefixed with "-" exclude a provider from the
+// automatic set: "--providers -ti" and "--providers auto,-ti" both mean
+// "every configured auto-selectable provider except TI". Exclusions
+// cannot be combined with an explicit inclusion list — with explicit
+// names, simply leave the unwanted provider out.
 func resolveProviderSelection(
 	value string,
 	configured bool,
 	cachePolicy lookupcache.Policy,
 ) ([]string, error) {
-	if !configured ||
-		strings.EqualFold(strings.TrimSpace(value), "auto") ||
-		strings.EqualFold(strings.TrimSpace(value), "all") {
-		if cachePolicy == lookupcache.PolicyOnly ||
-			cachePolicy == lookupcache.PolicyOffline {
-			return []string{"mouser", "digikey", "ti"}, nil
-		}
-		var selected []string
-		for _, capability := range provider.Discover().Providers {
-			if capability.Implemented && capability.Configured &&
-				capability.Kind == "distributor" {
-				selected = append(selected, capability.Name)
-			}
-		}
-		if len(selected) == 0 {
-			return nil, errNoConfiguredProviders
-		}
-		return selected, nil
+	included, excluded, err := splitProviderTokens(value, configured)
+	if err != nil {
+		return nil, err
 	}
-	providers := commaList(value)
-	if len(providers) == 0 {
-		return nil, fmt.Errorf("at least one provider is required")
+	if len(included) > 0 {
+		if len(excluded) > 0 {
+			return nil, fmt.Errorf(
+				"exclusions apply to the automatic set only; with explicit providers, leave the unwanted one out",
+			)
+		}
+		return included, nil
 	}
-	for _, name := range providers {
-		if name != "mouser" && name != "digikey" && name != "ti" &&
-			name != "microchip" {
-			return nil, fmt.Errorf("provider %s has no native pricing adapter", name)
+	automatic, err := automaticProviderSelection(cachePolicy)
+	if err != nil {
+		return nil, err
+	}
+	selected := make([]string, 0, len(automatic))
+	for _, name := range automatic {
+		if _, dropped := excluded[name]; !dropped {
+			selected = append(selected, name)
 		}
 	}
-	return providers, nil
+	if len(selected) == 0 {
+		if len(excluded) > 0 {
+			return nil, fmt.Errorf("every automatic provider was excluded")
+		}
+		return nil, errNoConfiguredProviders
+	}
+	return selected, nil
+}
+
+// splitProviderTokens validates the --providers value into explicit
+// inclusions and exclusions. An empty inclusion list means "automatic".
+func splitProviderTokens(
+	value string,
+	configured bool,
+) ([]string, map[string]struct{}, error) {
+	excluded := map[string]struct{}{}
+	if !configured {
+		return nil, excluded, nil
+	}
+	tokens := commaList(value)
+	if len(tokens) == 0 {
+		return nil, nil, fmt.Errorf("at least one provider is required")
+	}
+	included := []string{}
+	automatic := false
+	for _, token := range tokens {
+		if token == "auto" || token == "all" {
+			automatic = true
+			continue
+		}
+		name, isExclusion := strings.CutPrefix(token, "-")
+		definition, exists := provider.ByName(name)
+		if !exists || definition.NewRuntime == nil {
+			return nil, nil, fmt.Errorf("provider %s has no native pricing adapter", name)
+		}
+		if isExclusion {
+			excluded[definition.Name] = struct{}{}
+			continue
+		}
+		included = append(included, definition.Name)
+	}
+	if automatic && len(included) > 0 {
+		return nil, nil, fmt.Errorf(
+			"auto cannot be combined with explicit provider names; use exclusions (-name) instead",
+		)
+	}
+	if automatic || len(included) == 0 {
+		return nil, excluded, nil
+	}
+	return included, excluded, nil
+}
+
+// automaticProviderSelection returns the providers "auto" expands to.
+func automaticProviderSelection(
+	cachePolicy lookupcache.Policy,
+) ([]string, error) {
+	if cachePolicy == lookupcache.PolicyOnly ||
+		cachePolicy == lookupcache.PolicyOffline {
+		// Cache-only runs need no credentials, so every auto-selectable
+		// provider participates regardless of configuration.
+		return provider.AutoSelectableNames(), nil
+	}
+	autoSelectable := map[string]struct{}{}
+	for _, name := range provider.AutoSelectableNames() {
+		autoSelectable[name] = struct{}{}
+	}
+	var selected []string
+	for _, capability := range provider.Discover().Providers {
+		if _, eligible := autoSelectable[capability.Name]; !eligible {
+			continue
+		}
+		if capability.Implemented && capability.Configured {
+			selected = append(selected, capability.Name)
+		}
+	}
+	if len(selected) == 0 {
+		return nil, errNoConfiguredProviders
+	}
+	return selected, nil
 }
 
 func emitProviderSelectionError(
