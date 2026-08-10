@@ -85,14 +85,23 @@ type AppliedResolution struct {
 
 // PricingSummary contains only safely selected, common-currency totals.
 type PricingSummary struct {
-	LineCount          int            `json:"line_count"`
-	PricedCount        int            `json:"priced_count"`
-	ShortageCount      int            `json:"shortage_count"`
-	ReviewCount        int            `json:"review_count"`
-	NotFoundCount      int            `json:"not_found_count"`
-	NotApplicableCount int            `json:"not_applicable_count"`
-	ProviderErrors     int            `json:"provider_error_count"`
-	Currency           string         `json:"currency,omitempty"`
-	TotalCost          *money.Decimal `json:"total_cost,omitempty"`
-	CostPerUnit        *money.Decimal `json:"cost_per_unit,omitempty"`
+	LineCount          int              `json:"line_count"`
+	PricedCount        int              `json:"priced_count"`
+	ShortageCount      int              `json:"shortage_count"`
+	ReviewCount        int              `json:"review_count"`
+	NotFoundCount      int              `json:"not_found_count"`
+	NotApplicableCount int              `json:"not_applicable_count"`
+	ProviderErrors     int              `json:"provider_error_count"`
+	Currency           string           `json:"currency,omitempty"`
+	TotalCost          *money.Decimal   `json:"total_cost,omitempty"`
+	CostPerUnit        *money.Decimal   `json:"cost_per_unit,omitempty"`
+	Conversion         *QuoteProvenance `json:"conversion,omitempty"`
+}
+
+// QuoteProvenance identifies the dated quotes behind converted totals.
+// Its presence means Currency/TotalCost/CostPerUnit are converted values;
+// absent, they are native single-currency sums.
+type QuoteProvenance struct {
+	QuoteSource string `json:"quote_source"`
+	QuoteDate   string `json:"quote_date"`
 }

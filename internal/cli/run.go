@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/config"
 	"github.com/jihlenburg/bom-builder/internal/contract"
 	"github.com/jihlenburg/bom-builder/internal/design"
+	"github.com/jihlenburg/bom-builder/internal/fx"
 	"github.com/jihlenburg/bom-builder/internal/lookupcache"
 	"github.com/jihlenburg/bom-builder/internal/money"
 	"github.com/jihlenburg/bom-builder/internal/procurement"
@@ -336,6 +338,10 @@ func runLookup(args []string, stdout io.Writer) int {
 	if resolutionStore != nil {
 		defer resolutionStore.Close()
 	}
+	remaining, targetCurrency, err := consumeCurrencyFlag(remaining)
+	if err != nil {
+		return emitError(stdout, "lookup", "INVALID_CURRENCY", err.Error(), contract.ExitInput, pretty)
+	}
 	if len(remaining) != 1 {
 		return emitError(
 			stdout,
@@ -407,6 +413,7 @@ func runLookup(args []string, stdout io.Writer) int {
 		selectedProviders,
 		cacheConfig,
 		resolutionStore,
+		targetCurrency,
 		stdout,
 		pretty,
 	)
@@ -443,6 +450,10 @@ func runPrice(args []string, stdin io.Reader, stdout io.Writer) int {
 	}
 	if resolutionStore != nil {
 		defer resolutionStore.Close()
+	}
+	remaining, targetCurrency, err := consumeCurrencyFlag(remaining)
+	if err != nil {
+		return emitError(stdout, "price", "INVALID_CURRENCY", err.Error(), contract.ExitInput, pretty)
 	}
 	if !hasUnits {
 		return emitError(stdout, "price", "UNITS_REQUIRED", "--units is required", contract.ExitInput, pretty)
@@ -510,10 +521,31 @@ func runPrice(args []string, stdin io.Reader, stdout io.Writer) int {
 		selectedProviders,
 		cacheConfig,
 		resolutionStore,
+		targetCurrency,
 		stdout,
 		pretty,
 	)
 }
+
+// consumeCurrencyFlag reads the optional explicit conversion target. An
+// empty result means "no conversion": totals then require one native
+// currency, exactly as before.
+func consumeCurrencyFlag(args []string) ([]string, string, error) {
+	args, value, configured, err := consumeValueFlag(args, "--currency")
+	if err != nil {
+		return nil, "", err
+	}
+	if !configured {
+		return args, "", nil
+	}
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if !currencyCodePattern.MatchString(value) {
+		return nil, "", fmt.Errorf("currency must be a three-letter ISO code such as EUR")
+	}
+	return args, value, nil
+}
+
+var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // consumeResolutionSourcingFlags resolves how a pricing command consumes
 // the approved-resolutions store. Resolutions apply by default when the
@@ -568,9 +600,29 @@ func executePricing(
 	providerNames []string,
 	cacheConfig lookupcache.Config,
 	resolutionStore *resolutions.Store,
+	targetCurrency string,
 	stdout io.Writer,
 	pretty bool,
 ) int {
+	// Fetch quotes before touching providers: a broken FX source must
+	// fail the run without burning provider requests.
+	var conversion *sourcing.CurrencyConversion
+	if targetCurrency != "" {
+		client, fxErr := fx.NewECBClientFromEnvironment()
+		if fxErr != nil {
+			return emitError(stdout, command, "FX_QUOTES_UNAVAILABLE", fxErr.Error(), contract.ExitProvider, pretty)
+		}
+		fxCtx, fxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		table, fetchErr := client.FetchDaily(fxCtx)
+		fxCancel()
+		if fetchErr != nil {
+			return emitError(stdout, command, "FX_QUOTES_UNAVAILABLE", fetchErr.Error(), contract.ExitProvider, pretty)
+		}
+		conversion = &sourcing.CurrencyConversion{
+			Target: targetCurrency,
+			Table:  table,
+		}
+	}
 	runtimes, cacheSession, err := newProviderRuntimes(providerNames, cacheConfig)
 	if err != nil {
 		return emitProviderRuntimeSetupError(stdout, command, err, pretty)
@@ -599,7 +651,7 @@ func executePricing(
 	started := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)
 	defer cancel()
-	result := sourcing.Source(ctx, resolver, demands, units)
+	result := sourcing.SourceWithFX(ctx, resolver, demands, units, conversion)
 	providerRuns, totalRequests := providerRunMetadata(runtimes)
 	envelope := contract.PricingEnvelope{
 		SchemaVersion: contract.SchemaVersion,

@@ -58,8 +58,10 @@ and quality item from the Python roadmap.
 ## Core sourcing engine
 
 - [x] Deterministic BOM aggregation with provenance-preserving references
-- [ ] Complete the money/FX layer; exact six-place fixed-point money is
-      implemented, while dated cross-currency conversion remains
+- [ ] Complete the money/FX layer; exact six-place fixed-point money and
+      dated ECB conversion of summary totals (`--currency`) are
+      implemented, while FX-aware cross-provider plan COMPARISON (choosing
+      the cheapest offer across currencies) remains
 - [ ] Complete optimizer verification; the native purchase-plan optimizer and
       the Python-era behavioral cases are ported, while serialized
       cross-language golden fixtures remain. The `legacy/` tree has been
@@ -146,7 +148,10 @@ and quality item from the Python roadmap.
       Eurocircuits preferred suppliers bom-builder lacks); check seller
       coverage for manufacturer-direct stores and commercial API terms
       before committing.
-- [ ] ECB dated FX quotes with explicit failure propagation
+- [x] ECB dated FX quotes with explicit failure propagation (`internal/fx`:
+      credential-free daily reference rates, exact micro-unit conversion
+      with one half-to-even rounding, quote provenance in the summary,
+      fail-closed on unreachable quotes or unquoted currencies)
 - [ ] Optional OpenAI evidence ranking that never clears engineering review
 - [x] Complete live health coverage for every implemented distributor;
       Mouser, Digi-Key, TI, and NXP checks report latency, currency/locale,

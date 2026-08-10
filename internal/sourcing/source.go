@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
+	"github.com/jihlenburg/bom-builder/internal/fx"
 	"github.com/jihlenburg/bom-builder/internal/money"
 	"github.com/jihlenburg/bom-builder/internal/procurement"
 )
@@ -29,12 +30,34 @@ type Result struct {
 	Errors   []contract.Issue
 }
 
+// CurrencyConversion requests converted safe totals in one explicit
+// target currency against a dated quote table. Without it, totals exist
+// only when every selected plan already shares one currency.
+type CurrencyConversion struct {
+	Target string
+	Table  fx.Table
+}
+
 // Source resolves demands sequentially and computes only proven common-currency totals.
 func Source(
 	ctx context.Context,
 	resolver Resolver,
 	demands []procurement.Demand,
 	units int,
+) Result {
+	return SourceWithFX(ctx, resolver, demands, units, nil)
+}
+
+// SourceWithFX behaves like Source; with a conversion it additionally
+// totals safe plans in the target currency using the dated quotes, and a
+// plan whose currency the table cannot convert fails the run explicitly
+// instead of producing a partial total.
+func SourceWithFX(
+	ctx context.Context,
+	resolver Resolver,
+	demands []procurement.Demand,
+	units int,
+	conversion *CurrencyConversion,
 ) Result {
 	result := Result{
 		Status:   "complete",
@@ -50,6 +73,7 @@ func Source(
 	total := money.Decimal(0)
 	currency := ""
 	mixedCurrency := false
+	conversionFailed := false
 	for _, demand := range demands {
 		sourced, err := resolver.Lookup(ctx, demand)
 		if err != nil {
@@ -83,13 +107,33 @@ func Source(
 			}
 			result.Summary.PricedCount++
 			plan := sourced.Offer.SelectedPlan
-			if currency == "" {
+			extended := plan.ExtendedPrice
+			if conversion != nil {
+				converted, convertErr := conversion.Table.Convert(
+					extended,
+					plan.Currency,
+					conversion.Target,
+				)
+				if convertErr != nil {
+					// One inconvertible plan poisons the whole total:
+					// fail it explicitly rather than summing a subset.
+					result.Errors = append(result.Errors, contract.Issue{
+						Code:    "FX_CONVERSION_FAILED",
+						Message: convertErr.Error(),
+						Details: map[string]any{"part_number": demand.PartNumber},
+					})
+					result.Summary.ProviderErrors++
+					conversionFailed = true
+					continue
+				}
+				extended = converted
+			} else if currency == "" {
 				currency = plan.Currency
 			} else if !strings.EqualFold(currency, plan.Currency) {
 				mixedCurrency = true
 			}
 			var addErr error
-			total, addErr = total.Add(plan.ExtendedPrice)
+			total, addErr = total.Add(extended)
 			if addErr != nil {
 				result.Errors = append(result.Errors, contract.Issue{
 					Code:    "MONEY_OVERFLOW",
@@ -130,13 +174,31 @@ func Source(
 		}
 	}
 
-	if mixedCurrency {
+	switch {
+	case conversion != nil:
+		if !conversionFailed &&
+			result.Summary.PricedCount > 0 &&
+			result.Summary.ProviderErrors == 0 {
+			result.Summary.Currency = strings.ToUpper(conversion.Target)
+			result.Summary.TotalCost = decimalPointer(total)
+			if units > 0 {
+				perUnit, err := total.DivInt(units)
+				if err == nil {
+					result.Summary.CostPerUnit = decimalPointer(perUnit)
+				}
+			}
+			result.Summary.Conversion = &procurement.QuoteProvenance{
+				QuoteSource: conversion.Table.Source(),
+				QuoteDate:   conversion.Table.Date(),
+			}
+		}
+	case mixedCurrency:
 		result.Errors = append(result.Errors, contract.Issue{
 			Code:    "MIXED_CURRENCY",
 			Message: "safe BOM total omitted because selected plans use different currencies",
 		})
 		result.Summary.ProviderErrors++
-	} else if result.Summary.PricedCount > 0 && result.Summary.ProviderErrors == 0 {
+	case result.Summary.PricedCount > 0 && result.Summary.ProviderErrors == 0:
 		result.Summary.Currency = strings.ToUpper(currency)
 		result.Summary.TotalCost = decimalPointer(total)
 		if units > 0 {

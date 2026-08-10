@@ -86,7 +86,17 @@
         },
         "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
         "total_cost": {"$ref": "#/$defs/decimal"},
-        "cost_per_unit": {"$ref": "#/$defs/decimal"}
+        "cost_per_unit": {"$ref": "#/$defs/decimal"},
+        "conversion": {
+          "description": "Present when totals were converted into the explicitly requested currency using the named dated quotes; absent totals are native single-currency sums.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["quote_source", "quote_date"],
+          "properties": {
+            "quote_source": {"enum": ["ecb"]},
+            "quote_date": {"type": "string", "minLength": 1}
+          }
+        }
       }
     },
     "parts": {

@@ -1,5 +1,32 @@
 # Logbook
 
+## 2026-08-10 (FX layer: dated ECB quotes)
+
+- Added `internal/fx`: dated foreign-exchange reference quotes and exact
+  conversion. The ECB's daily EUR-based reference-rate document is fetched
+  credential-free (endpoint overridable via BOM_BUILDER_ECB_URL, which
+  joins the restricted `.env` key list); the parsed table carries its
+  publication date and refuses invalid or non-positive rates. Conversion
+  is computed on integer micro-units — amount × rate(to) / rate(from) —
+  with exactly ONE half-to-even rounding at the sixth decimal place via
+  big.Int, so no binary floating point ever touches money and cross rates
+  (USD→JPY through EUR) do not double-round. Overflow beyond the exact
+  int64 micro range is an explicit error.
+- Wired into sourcing as `SourceWithFX`: `--currency <ISO>` on `lookup`
+  and `price` opts a run into converted summary totals. The semantics are
+  deliberately conservative: per-part plans keep their native currency;
+  the summary's converted totals carry a `conversion` provenance block
+  (quote_source "ecb", quote_date); a run without `--currency` behaves
+  exactly as before, failing closed on mixed currencies. Failure
+  propagation is explicit at both stages — quotes unreachable fails the
+  run BEFORE any provider request is spent (FX_QUOTES_UNAVAILABLE, exit
+  4), and a selected plan in an unquoted currency poisons the whole total
+  (FX_CONVERSION_FAILED) instead of summing a convertible subset.
+- Not yet done, recorded honestly in TODO.md: FX-aware cross-provider
+  plan COMPARISON (choosing the cheapest offer across currencies inside
+  the multi-resolver) remains; today FX affects totals only, never
+  selection.
+
 ## 2026-08-10 (resolution-aware sourcing)
 
 - Closed the loop on the resolutions store: `lookup` and `price` now

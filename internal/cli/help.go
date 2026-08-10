@@ -131,7 +131,7 @@ Example:
   bom-builder lookup <mpn> --manufacturer <name>
     [--quantity <n>] [--providers <auto|list>] [--deadline <duration>]
     [cache-options] [--resolutions-db <path>] [--ignore-resolutions]
-    [--pretty]
+    [--currency <ISO>] [--pretty]
 
 Example:
   bom-builder lookup RC0402FR-0710KL --manufacturer Yageo \
@@ -150,7 +150,8 @@ pricing; such results always remain review-required.
   bom-builder price <design.json|-> [...] --units <n>
     [--attrition <0..1>] [--providers <auto|list>]
     [--deadline <duration>] [cache-options]
-    [--resolutions-db <path>] [--ignore-resolutions] [--pretty]
+    [--resolutions-db <path>] [--ignore-resolutions]
+    [--currency <ISO>] [--pretty]
 
 Example:
   bom-builder price design.json --units 100 --attrition 0.02 \
@@ -159,6 +160,12 @@ Example:
 Demands with an active approved resolution are sourced as their approved
 replacement (see ` + "`bom-builder help resolutions`" + `); each affected
 part reports the approval's identity in parts[].resolution.
+
+Without --currency, safe totals exist only when every selected plan shares
+one currency (mixed currencies fail closed). With --currency <ISO>, totals
+are converted using the ECB's dated daily reference quotes; the summary
+then reports quote_source and quote_date, per-part plans keep their native
+currency, and a plan the quotes cannot convert fails the run explicitly.
 `,
 	"documents": `Usage:
   bom-builder documents list <mpn> --manufacturer <name> [options]

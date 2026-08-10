@@ -31,6 +31,7 @@ var restrictedDotEnvKeys = map[string]bool{
 	"BOM_BUILDER_NXP_PART_URL":           true,
 	"BOM_BUILDER_NXP_BROWSER":            true,
 	"BOM_BUILDER_MICROCHIP_PRODUCTS_URL": true,
+	"BOM_BUILDER_ECB_URL":                true,
 	"BOM_BUILDER_CACHE_DB":               true,
 	"BOM_BUILDER_RESOLUTIONS_DB":         true,
 }

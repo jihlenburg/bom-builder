@@ -137,8 +137,26 @@ selected plan. Base-part to packaging-suffix matches remain review-required.
 
 When more than one provider is selected, each normalized candidate is returned
 in `parts[].offers`, while `parts[].offer` is the chosen safe plan. Plans in
-different currencies are never compared; the command fails closed until an FX
-layer can prove a common currency.
+different currencies are never compared for selection, and without an explicit
+conversion target the summary total exists only when every selected plan
+already shares one currency.
+
+## Currency conversion
+
+```bash
+bom-builder price design.json --units 100 --currency EUR --pretty
+```
+
+`--currency <ISO>` on `lookup` and `price` converts the summary totals using
+the European Central Bank's dated daily reference quotes (credential-free).
+The conversion is deliberate and visible: the summary reports `quote_source`
+and `quote_date` next to the converted `total_cost`, per-part plans keep
+their native currency, and conversion math is exact — integer micro-units
+with a single half-to-even rounding at the sixth decimal place. Failures are
+explicit: unreachable quotes fail the run before any provider is contacted
+(`FX_QUOTES_UNAVAILABLE`), and a selected plan in a currency the quotes do
+not cover omits the total with `FX_CONVERSION_FAILED` rather than summing a
+subset.
 
 ## Microchip factory evidence (no pricing)
 
@@ -424,6 +442,7 @@ internal/config/      safe .env loading
 internal/design/      design loading and validation
 internal/bom/         deterministic demand aggregation
 internal/money/       exact fixed-point decimal arithmetic
+internal/fx/          dated ECB quotes and exact currency conversion
 internal/procurement/ normalized offers and purchase-plan optimization
 internal/provider/    provider discovery, health, and adapters
 internal/lookupcache/ versioned SQLite normalized-result persistence

@@ -7,11 +7,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jihlenburg/bom-builder/internal/contract"
 	"github.com/jihlenburg/bom-builder/internal/resolutions"
 )
 
@@ -156,5 +159,120 @@ func TestPriceConsumesActiveResolutionFromStdinDesign(t *testing.T) {
 	}
 	if part["demand"].(map[string]any)["part_number"] != "OLD-PART-1" {
 		t.Fatalf("aggregated demand must keep the original identity: %#v", part["demand"])
+	}
+}
+
+const ecbTestFixture = `<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01"
+    xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+  <Cube>
+    <Cube time="2026-08-07">
+      <Cube currency="USD" rate="1.25"/>
+    </Cube>
+  </Cube>
+</gesmes:Envelope>`
+
+func TestLookupConvertsSummaryWithExplicitCurrency(t *testing.T) {
+	t.Chdir(t.TempDir())
+	server := mouserServer(t, "5000")
+	defer server.Close()
+	configureMouserTestEnvironment(t, server.URL)
+	ecb := httptest.NewServer(http.HandlerFunc(
+		func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Write([]byte(ecbTestFixture))
+		},
+	))
+	defer ecb.Close()
+	t.Setenv("BOM_BUILDER_ECB_URL", ecb.URL)
+
+	var stdout bytes.Buffer
+	exitCode := Run(
+		[]string{
+			"lookup",
+			"RC0402FR-0710KL",
+			"--manufacturer", "Yageo",
+			"--quantity", "950",
+			"--currency", "usd",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&bytes.Buffer{},
+	)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	summary := payload["summary"].(map[string]any)
+	// The Mouser fixture prices 950 x 0.09 EUR = 90.00 EUR -> 112.50 USD.
+	if summary["currency"] != "USD" || summary["total_cost"] != "112.500000" {
+		t.Fatalf("unexpected converted summary: %#v", summary)
+	}
+	conversion := summary["conversion"].(map[string]any)
+	if conversion["quote_source"] != "ecb" || conversion["quote_date"] != "2026-08-07" {
+		t.Fatalf("missing quote provenance: %#v", conversion)
+	}
+	// The per-part plan stays in its native currency.
+	plan := payload["parts"].([]any)[0].(map[string]any)["offer"].(map[string]any)["selected_plan"].(map[string]any)
+	if plan["currency"] != "EUR" {
+		t.Fatalf("native plan currency must be preserved: %#v", plan)
+	}
+}
+
+func TestLookupFailsClosedWhenQuotesUnavailable(t *testing.T) {
+	t.Chdir(t.TempDir())
+	server := mouserServer(t, "5000")
+	defer server.Close()
+	configureMouserTestEnvironment(t, server.URL)
+	ecb := httptest.NewServer(http.HandlerFunc(
+		func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusBadGateway)
+		},
+	))
+	defer ecb.Close()
+	t.Setenv("BOM_BUILDER_ECB_URL", ecb.URL)
+
+	var stdout bytes.Buffer
+	exitCode := Run(
+		[]string{
+			"lookup",
+			"RC0402FR-0710KL",
+			"--manufacturer", "Yageo",
+			"--currency", "USD",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&bytes.Buffer{},
+	)
+	if exitCode != contract.ExitProvider {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["errors"].([]any)[0].(map[string]any)["code"] != "FX_QUOTES_UNAVAILABLE" {
+		t.Fatalf("expected FX_QUOTES_UNAVAILABLE, got %#v", payload)
+	}
+}
+
+func TestLookupRejectsInvalidCurrencyCode(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var stdout bytes.Buffer
+	exitCode := Run(
+		[]string{
+			"lookup", "RC0402FR-0710KL",
+			"--manufacturer", "Yageo",
+			"--currency", "EURO",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&bytes.Buffer{},
+	)
+	if exitCode != contract.ExitInput ||
+		!strings.Contains(stdout.String(), "INVALID_CURRENCY") {
+		t.Fatalf("expected INVALID_CURRENCY, got %d %s", exitCode, stdout.String())
 	}
 }
