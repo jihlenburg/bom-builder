@@ -37,3 +37,5 @@
 - [x] Start the interactive terminal mode: a Bubble Tea resolutions manager
       (`bom-builder interactive`) with a TTY gate and a fully testable
       model layer
+- [x] Add the interactive resolver flow: in-interface lookup, candidate
+      review, and approval seeding with per-lookup provider runtimes

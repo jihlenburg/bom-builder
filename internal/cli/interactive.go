@@ -4,12 +4,17 @@
 package cli
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 
 	"github.com/mattn/go-isatty"
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
+	"github.com/jihlenburg/bom-builder/internal/procurement"
+	"github.com/jihlenburg/bom-builder/internal/sourcing"
 	"github.com/jihlenburg/bom-builder/internal/tui"
 )
 
@@ -36,10 +41,69 @@ func runInteractive(args []string, stdin io.Reader, stdout io.Writer) int {
 			pretty,
 		)
 	}
-	if err := tui.Run(tui.Options{DatabasePath: path}); err != nil {
+	if err := tui.Run(tui.Options{
+		DatabasePath: path,
+		Lookup:       interactiveLookupRunner(),
+	}); err != nil {
 		return emitResolutionsError(stdout, "interactive", err, pretty)
 	}
 	return contract.ExitOK
+}
+
+// interactiveLookupRunner sources one demand with the same provider,
+// cache, and selection semantics as the lookup command. Runtimes are
+// constructed per call and torn down afterwards, so a lookup made hours
+// into a session sees current configuration and holds no idle browser or
+// token state between resolutions.
+func interactiveLookupRunner() tui.LookupRunner {
+	return func(
+		ctx context.Context,
+		demand procurement.Demand,
+		providers string,
+	) (procurement.SourcedPart, error) {
+		_, cacheConfig, err := consumeCacheFlags(nil)
+		if err != nil {
+			return procurement.SourcedPart{}, err
+		}
+		selected, err := resolveProviderSelection(
+			providers,
+			providers != "",
+			cacheConfig.Policy,
+		)
+		if err != nil {
+			return procurement.SourcedPart{}, err
+		}
+		runtimes, cacheSession, err := newProviderRuntimes(selected, cacheConfig)
+		if err != nil {
+			var setupError *providerRuntimeSetupError
+			if errors.As(err, &setupError) {
+				return procurement.SourcedPart{}, fmt.Errorf(
+					"%s: %s",
+					setupError.provider,
+					setupError.cause.Error(),
+				)
+			}
+			return procurement.SourcedPart{}, err
+		}
+		defer closeProviderRuntimeResources(runtimes, cacheSession)
+		bindings := make([]sourcing.ProviderResolver, 0, len(runtimes))
+		for _, runtime := range runtimes {
+			bindings = append(bindings, sourcing.ProviderResolver{
+				Name: runtime.name, Resolver: runtime.resolver,
+			})
+		}
+		resolver, err := sourcing.NewMultiResolver(bindings)
+		if err != nil {
+			return procurement.SourcedPart{}, err
+		}
+		result := sourcing.Source(ctx, resolver, []procurement.Demand{demand}, 1)
+		if len(result.Parts) != 1 {
+			return procurement.SourcedPart{}, errors.New(
+				"sourcing returned an unexpected part count",
+			)
+		}
+		return result.Parts[0], nil
+	}
 }
 
 func isTerminal(stream any) bool {

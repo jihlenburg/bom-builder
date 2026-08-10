@@ -290,8 +290,15 @@ and inactive records, inspect details and audit history, approve new
 resolutions, and revoke active ones. Every decision requires the acting
 person's name, exactly like the JSON commands.
 
+The resolver flow ("l") sources one part with the same provider, cache,
+and selection semantics as the lookup command, lists every normalized
+candidate with match method, stock, price, and review status, and seeds
+the approve form with the chosen candidate. The approver still reviews
+every field and types their own name: choosing a row never clears
+engineering review by itself.
+
 Keys: arrows/j/k move · enter detail · a approve · r revoke · h history ·
-i toggle inactive · esc back · ctrl+s submit · q quit
+l resolve a part · i toggle inactive · esc back · ctrl+s submit · q quit
 
 This is the one command that does not emit JSON on stdout: it renders a
 human interface and refuses to start when stdin or stdout is not a

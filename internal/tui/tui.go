@@ -30,6 +30,9 @@ type Options struct {
 	// DatabasePath locates the resolutions SQLite database. The session
 	// opens it read-write: interactive mode exists to record decisions.
 	DatabasePath string
+	// Lookup sources one demand for the resolver flow. When nil, the
+	// resolver is unavailable and the interface hides it.
+	Lookup LookupRunner
 }
 
 // Run opens the resolutions store and blocks inside the terminal interface
@@ -44,7 +47,7 @@ func Run(options Options) error {
 		return err
 	}
 	defer store.Close()
-	model, err := newModel(store)
+	model, err := newModel(store, options.Lookup)
 	if err != nil {
 		return err
 	}

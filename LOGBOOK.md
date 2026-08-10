@@ -1,5 +1,34 @@
 # Logbook
 
+## 2026-08-10 (interactive resolver flow)
+
+- Added the resolver flow to interactive mode — the successor of the Python
+  TUI's resolver modal, now wired to the audited resolutions store instead
+  of an in-run choice. Pressing "l" opens a lookup form (part, manufacturer,
+  quantity, providers with `auto` default); the lookup runs asynchronously
+  through the injected `tui.LookupRunner` while the interface stays
+  responsive, and a sequence counter discards results that arrive after the
+  user abandoned the lookup. The candidates view lists every normalized
+  offer with provider, safe/review marker, MPN, SKU, match method, stock,
+  and unit price; choosing one seeds the approve form with the original
+  demand, the replacement identity, the provider SKU, and an evidence note
+  (provider, match method, stock, unit price, review flag). The
+  `approved_by` field is NEVER prefilled and gets the focus — choosing a
+  candidate cannot clear engineering review; a person still has to sign it.
+- The CLI injects the runner so `internal/tui` never constructs provider
+  clients (and the cli→tui import direction stays acyclic). The runner
+  reuses the exact `lookup` semantics: env-driven cache policy, the same
+  provider-selection rules, `newProviderRuntimes`, multi-resolver sourcing.
+  Runtimes are built per lookup and torn down afterwards — no idle browser
+  processes or token state between resolutions, and configuration changes
+  are picked up mid-session. Without a runner (nil), the interface hides
+  the resolver key entirely, which the tests assert.
+- Model tests cover the full happy path (lookup → candidates → prefilled
+  approve → stored record with the chosen SKU), validation, runner errors
+  returning to the form visibly, the late-result guard, and the
+  never-prefill-approver invariant, all driven through Update/View with a
+  fake runner — still no terminal required.
+
 ## 2026-08-10 (interactive mode, first slice)
 
 - Started the interactive terminal mode: `bom-builder interactive`, a

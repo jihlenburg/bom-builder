@@ -17,12 +17,20 @@ import (
 
 func openTestModel(t *testing.T) (model, *resolutions.Store) {
 	t.Helper()
+	return openTestModelWithLookup(t, nil)
+}
+
+func openTestModelWithLookup(
+	t *testing.T,
+	lookup LookupRunner,
+) (model, *resolutions.Store) {
+	t.Helper()
 	store, err := resolutions.Open(filepath.Join(t.TempDir(), "resolutions.sqlite3"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
-	created, err := newModel(store)
+	created, err := newModel(store, lookup)
 	if err != nil {
 		t.Fatalf("new model: %v", err)
 	}

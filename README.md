@@ -327,6 +327,17 @@ new resolutions through a form, and revoke active ones. The rules are
 identical to the JSON commands — every decision names the acting person, and
 revocation uses the same content-bound preview under the hood.
 
+The resolver flow (`l`) closes the loop between sourcing and decisions: it
+sources one part with the same provider, cache, and selection semantics as
+`lookup`, lists every normalized candidate with match method, stock, price,
+and review status, and seeds the approve form with the chosen candidate —
+original part, replacement identity, provider SKU, and an evidence note.
+The approver still reviews every field and must type their own name;
+choosing a row never clears engineering review by itself. Provider clients
+are constructed per lookup and torn down afterwards, so a resolution made
+hours into a session sees current configuration and no idle browser or
+token state lingers between lookups.
+
 Interactive mode is the one deliberate exception to the JSON stdout
 protocol. It renders for a human, and it refuses to start when stdin or
 stdout is not a terminal, so a script or agent that reaches it by mistake

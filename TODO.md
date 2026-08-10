@@ -40,9 +40,11 @@ and quality item from the Python roadmap.
 - [ ] Interactive live pricing runs: stream `price`-style sourcing progress
       into the interface (the archived Python TUI's parts table, cost
       panel, and status bar)
-- [ ] Interactive resolver flow: when a lookup is review-required, present
-      candidates and record the human choice directly into the resolutions
-      store (successor of the Python resolver modal)
+- [x] Interactive resolver flow: source one part from inside the interface,
+      present every normalized candidate (match method, stock, price,
+      review status), and seed the approve form with the chosen candidate —
+      the successor of the Python resolver modal. The approver is never
+      prefilled; choosing a candidate cannot clear engineering review
 - [ ] Interactive alternatives review: browse the compatibility matrix and
       hand a chosen candidate to the approve form
 

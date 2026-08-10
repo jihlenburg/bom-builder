@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jihlenburg/bom-builder/internal/procurement"
 	"github.com/jihlenburg/bom-builder/internal/resolutions"
 )
 
@@ -24,6 +25,9 @@ const (
 	stateHistory
 	stateApprove
 	stateRevoke
+	stateLookupForm
+	stateLookupWait
+	stateCandidates
 )
 
 const listLimit = 1000
@@ -92,32 +96,46 @@ type model struct {
 	revokeInputs  [revokeFieldCount]textinput.Model
 	focusIndex    int
 
+	// Resolver flow: an injected runner sources one demand and the human
+	// picks the candidate to approve. A nil runner disables the flow.
+	lookup          LookupRunner
+	lookupInputs    [lookupFieldCount]textinput.Model
+	lookupSeq       int
+	lookupDemand    procurement.Demand
+	candidates      procurement.SourcedPart
+	candidateCursor int
+
 	width  int
 	height int
 }
 
-func newModel(store *resolutions.Store) (model, error) {
+func newModel(store *resolutions.Store, lookup LookupRunner) (model, error) {
 	created := model{
-		store: store,
-		now:   func() time.Time { return time.Now().UTC() },
-		state: stateList,
+		store:  store,
+		lookup: lookup,
+		now:    func() time.Time { return time.Now().UTC() },
+		state:  stateList,
 	}
 	for index := range created.approveInputs {
-		input := textinput.New()
-		input.Prompt = "> "
-		input.CharLimit = 500
-		created.approveInputs[index] = input
+		created.approveInputs[index] = newFormInput()
 	}
 	for index := range created.revokeInputs {
-		input := textinput.New()
-		input.Prompt = "> "
-		input.CharLimit = 500
-		created.revokeInputs[index] = input
+		created.revokeInputs[index] = newFormInput()
+	}
+	for index := range created.lookupInputs {
+		created.lookupInputs[index] = newFormInput()
 	}
 	if err := created.reload(); err != nil {
 		return model{}, err
 	}
 	return created, nil
+}
+
+func newFormInput() textinput.Model {
+	input := textinput.New()
+	input.Prompt = "> "
+	input.CharLimit = 500
+	return input
 }
 
 func (interactive *model) reload() error {
@@ -166,6 +184,8 @@ func (interactive model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		interactive.width = typed.Width
 		interactive.height = typed.Height
 		return interactive, nil
+	case lookupResultMsg:
+		return interactive.applyLookupResult(typed)
 	case tea.KeyMsg:
 		if typed.String() == "ctrl+c" {
 			return interactive, tea.Quit
@@ -181,6 +201,12 @@ func (interactive model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return interactive.updateApprove(typed)
 		case stateRevoke:
 			return interactive.updateRevoke(typed)
+		case stateLookupForm:
+			return interactive.updateLookupForm(typed)
+		case stateLookupWait:
+			return interactive.updateLookupWait(typed)
+		case stateCandidates:
+			return interactive.updateCandidates(typed)
 		}
 	}
 	return interactive, nil
@@ -238,6 +264,12 @@ func (interactive model) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			interactive.focusIndex = 0
 			interactive.revokeInputs[0].Focus()
 			interactive.state = stateRevoke
+		}
+	case "l":
+		if interactive.lookup != nil {
+			interactive.clearMessage()
+			interactive.resetLookupForm()
+			interactive.state = stateLookupForm
 		}
 	}
 	return interactive, nil
@@ -312,18 +344,19 @@ func (interactive model) updateRevoke(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (interactive *model) moveFocus(direction int) {
-	count := approveFieldCount
-	if interactive.state == stateRevoke {
-		count = revokeFieldCount
+	var inputs []textinput.Model
+	switch interactive.state {
+	case stateRevoke:
+		inputs = interactive.revokeInputs[:]
+	case stateLookupForm:
+		inputs = interactive.lookupInputs[:]
+	default:
+		inputs = interactive.approveInputs[:]
 	}
+	count := len(inputs)
 	next := (interactive.focusIndex + direction + count) % count
-	if interactive.state == stateRevoke {
-		interactive.revokeInputs[interactive.focusIndex].Blur()
-		interactive.revokeInputs[next].Focus()
-	} else {
-		interactive.approveInputs[interactive.focusIndex].Blur()
-		interactive.approveInputs[next].Focus()
-	}
+	inputs[interactive.focusIndex].Blur()
+	inputs[next].Focus()
 	interactive.focusIndex = next
 }
 
@@ -430,6 +463,12 @@ func (interactive model) View() string {
 		)
 	case stateRevoke:
 		view = interactive.viewRevoke()
+	case stateLookupForm:
+		view = interactive.viewLookupForm()
+	case stateLookupWait:
+		view = interactive.viewLookupWait()
+	case stateCandidates:
+		view = interactive.viewCandidates()
 	default:
 		view = interactive.viewList()
 	}
@@ -481,10 +520,13 @@ func (interactive model) viewList() string {
 		builder.WriteString("\n")
 	}
 	builder.WriteString("\n")
-	builder.WriteString(dimStyle.Render(
-		"enter detail · a approve · r revoke · h history · i " +
-			interactive.inactiveToggleLabel() + " · q quit",
-	))
+	keys := "enter detail · a approve · r revoke · h history · i " +
+		interactive.inactiveToggleLabel()
+	if interactive.lookup != nil {
+		keys += " · l resolve a part"
+	}
+	keys += " · q quit"
+	builder.WriteString(dimStyle.Render(keys))
 	builder.WriteString("\n")
 	return builder.String()
 }
