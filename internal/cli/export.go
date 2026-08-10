@@ -85,7 +85,7 @@ func runExportECBOM(args []string, stdin io.Reader, stdout io.Writer) int {
 			pretty,
 		)
 	}
-	data, err := bom.EurocircuitsCSV(designs[0])
+	data, renderWarnings, err := bom.EurocircuitsCSV(designs[0])
 	if err != nil {
 		return emitError(stdout, command, "RENDER_FAILED", err.Error(), contract.ExitInternal, pretty)
 	}
@@ -135,7 +135,7 @@ func runExportECBOM(args []string, stdin io.Reader, stdout io.Writer) int {
 			SHA256:     hex.EncodeToString(digest[:]),
 			LineCount:  len(designs[0].Parts),
 		},
-		Warnings: []contract.Issue{},
+		Warnings: renderWarnings,
 		Errors:   []contract.Issue{},
 	}
 	return emitJSON(stdout, envelope, pretty)

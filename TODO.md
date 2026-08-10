@@ -165,7 +165,12 @@ and quality item from the Python roadmap.
 - [ ] Keep AI-ranked fuzzy matches review-required until deterministic
       compatibility checks pass
 - [ ] Reject non-finite numeric input
-- [ ] Escape formula-leading content in CSV and Excel artifacts
+- [x] Escape formula-leading content in CSV artifacts: `export ec-bom`
+      neutralizes `=`/`@`/tab/CR-leading cells and non-numeric `+`/`-`
+      cells with an apostrophe and reports every change as an explicit
+      `CSV_FORMULA_CONTENT_ESCAPED` warning (plain signed numbers survive
+      verbatim). Excel artifacts do not exist yet; apply the same guard
+      when they do
 - [x] Ensure secrets never appear in arguments, errors, output, or provider
       excerpts for every currently implemented provider, with redaction tests
 
@@ -224,8 +229,11 @@ and quality item from the Python roadmap.
 - [ ] Add subprocess contract tests, golden JSON tests, and schema validation
 - [ ] Add redaction, cancellation, concurrency, and mocked provider-health tests
 - [ ] Add benchmark fixtures for small, medium, and production-sized BOMs
-- [ ] Add CI for tests, race detector, vet, static analysis, schema
-      compatibility, cross-builds, and releases
+- [ ] Complete CI; a GitHub Actions workflow now runs gofmt and the full
+      `make check` gate (tests, race detector, vet, the windows/amd64
+      cross-build, native build) on every push and pull request, while
+      static analysis, schema-compatibility checks, and release builds
+      remain
 - [ ] Cross-compile release binaries for macOS, Linux, and Windows
       (the `windows/amd64` build+vet gate already runs in `make check`;
       release packaging remains)

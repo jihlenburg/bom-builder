@@ -1,5 +1,25 @@
 # Logbook
 
+## 2026-08-10 (CI, CSV formula guard)
+
+- Added GitHub Actions CI: gofmt cleanliness plus the full `make check`
+  gate (unit, race, vet, windows/amd64 cross-build+vet, native build) on
+  every push and pull request, with per-ref concurrency cancellation. The
+  workflow bootstraps any Go 1.25.x and lets the Makefile's pinned
+  GOTOOLCHAIN download go1.25.12, so CI and local runs use the identical
+  compiler.
+- Closed the spreadsheet formula-injection gap in `export ec-bom`. Cells
+  beginning with `=`, `@`, tab, or CR are always neutralized with a
+  leading apostrophe; cells beginning with `+` or `-` are neutralized
+  only when the whole cell is not a plain decimal number, so ordinary
+  engineering values (`-40`, `+3.3`) survive verbatim while DDE payloads
+  (`-cmd|' /C calc'!A0`) do not. Every neutralized cell is reported as a
+  CSV_FORMULA_CONTENT_ESCAPED warning in the export envelope — the
+  fidelity change is visible, never silent. Known cost, accepted and
+  documented: free text that legitimately starts with a minus ("-40..85C
+  range") gains an apostrophe an Excel user never sees but the
+  Eurocircuits parser would; the warning makes that reviewable.
+
 ## 2026-08-10 (local web UI)
 
 - Added `bom-builder serve` (`internal/webui`): the resolutions manager and
