@@ -80,6 +80,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runResolutions(args[1:], stdin, stdout)
 	case "interactive":
 		return runInteractive(args[1:], stdin, stdout)
+	case "serve":
+		return runServe(args[1:], stdout, stderr)
 	default:
 		return emitError(
 			stdout,
@@ -136,6 +138,7 @@ func runCapabilities(args []string, stdout io.Writer) int {
 			"resolutions history",
 			"resolutions list",
 			"resolutions revoke",
+			"serve",
 			"schema input",
 			"schema alternatives",
 			"schema cache",

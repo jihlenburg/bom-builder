@@ -1,5 +1,48 @@
 # Logbook
 
+## 2026-08-10 (local web UI)
+
+- Added `bom-builder serve` (`internal/webui`): the resolutions manager and
+  resolver flow in a browser, parallel to the terminal interface. The
+  dependency budget for the entire feature is the Go standard library —
+  the frontend is hand-written HTML/CSS/JS embedded with `go:embed`, no
+  Node toolchain, no npm tree, no build step, no external requests. This
+  was the deciding argument against starting with a Wails-style desktop
+  shell: the same UI can be wrapped natively later, but today nothing
+  about the build, the `windows/amd64` gate, or `CGO_ENABLED=0` changes.
+- Security posture (defense in depth for a single-human localhost tool):
+  loopback-only listener enforced at the CLI (`LISTEN_NOT_LOOPBACK` for
+  anything else); a 256-bit per-session bearer token in the printed URL,
+  required on every API request (constant-time compare) so a malicious
+  website cannot drive the API cross-origin; loopback Host-header
+  enforcement against DNS rebinding; loopback-origin enforcement for
+  state-changing browser requests; strict CSP (`default-src 'none'`, no
+  inline script); `no-store` responses. The frontend keeps the token in
+  memory only and strips it from the address bar and history immediately.
+  The web JSON API is an internal contract with the embedded frontend —
+  the public machine interface remains the CLI.
+- Protocol note: `serve` still emits exactly one JSON document on stdout —
+  the startup envelope with the tokenized URL and database path — then
+  serves until Ctrl+C with diagnostics on stderr, so agents can launch it
+  and hand the URL to a human.
+- Approve/revoke semantics are identical to the CLI and TUI: named person
+  required, supersede on re-approval, revocation via the content-bound
+  preview/apply handshake (the frontend's two-click "Preview revoke" →
+  "Confirm revoke" carries the real apply token; a concurrent change
+  surfaces as a 409). The resolver endpoint reuses the same injected
+  lookup runner as the TUI, per-lookup runtimes included.
+- Verified beyond unit tests: the Go test suite covers the API lifecycle,
+  auth, rebinding/origin rejection, and validation with httptest, and a
+  headless-Chromium run drove the real page end to end (approve via form,
+  table render, detail, revoke preview/confirm, inactive toggle) with a
+  zero-console-error assertion. That browser run caught two real issues
+  the Go tests could not: success messages appeared before the table
+  refresh (now the message is the completion signal, shown after refresh)
+  and the favicon request 404-ed against the strict CSP (now answered
+  with 204). The browser harness lives in the session scratchpad, not the
+  repository; a committed Playwright suite would need the npm toolchain
+  the feature deliberately avoids.
+
 ## 2026-08-10 (interactive resolver flow)
 
 - Added the resolver flow to interactive mode — the successor of the Python

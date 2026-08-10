@@ -21,6 +21,12 @@ on only in Git history.
   model layer is a pure state machine and must stay testable without a
   terminal. `interactive` is the only command exempt from the JSON stdout
   protocol and must keep refusing non-TTY stdio.
+- `internal/webui/` owns the local web interface: loopback-only listener,
+  per-session bearer token, loopback Host/Origin enforcement, strict CSP,
+  and a hand-written embedded frontend (stdlib only — no npm, no build
+  step, no external requests). Its JSON API is an internal contract with
+  its own frontend, not a public interface; `serve` emits exactly one
+  JSON startup envelope on stdout and then serves until interrupted.
 - `internal/config/` owns non-evaluating `.env` loading.
 - `schemas/` contains and embeds the versioned public JSON contracts.
 - `examples/` holds runnable example input documents used by the README.

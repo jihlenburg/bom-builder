@@ -519,6 +519,21 @@ type ResolutionHistoryEnvelope struct {
 	Errors        []Issue                `json:"errors"`
 }
 
+// ServeEnvelope is the single startup document emitted by serve before
+// the process begins serving the local web interface.
+type ServeEnvelope struct {
+	SchemaVersion string  `json:"schema_version"`
+	Status        string  `json:"status"`
+	ExitCode      int     `json:"exit_code"`
+	Command       string  `json:"command"`
+	Version       string  `json:"version"`
+	URL           string  `json:"url"`
+	Address       string  `json:"address"`
+	Database      string  `json:"database"`
+	Warnings      []Issue `json:"warnings"`
+	Errors        []Issue `json:"errors"`
+}
+
 // ResolutionRevokeEnvelope is emitted by resolutions revoke previews and
 // applications.
 type ResolutionRevokeEnvelope struct {

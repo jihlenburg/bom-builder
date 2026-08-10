@@ -39,3 +39,6 @@
       model layer
 - [x] Add the interactive resolver flow: in-interface lookup, candidate
       review, and approval seeding with per-lookup provider runtimes
+- [x] Add the local web UI (`bom-builder serve`): loopback-only, token-
+      gated, embedded stdlib-only frontend mirroring the TUI, verified
+      end to end in a headless browser

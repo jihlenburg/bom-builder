@@ -45,6 +45,13 @@ and quality item from the Python roadmap.
       review status), and seed the approve form with the chosen candidate —
       the successor of the Python resolver modal. The approver is never
       prefilled; choosing a candidate cannot clear engineering review
+- [x] Local web UI parallel to the TUI: `bom-builder serve` — loopback-only
+      listener, per-session bearer token, Host/Origin enforcement, strict
+      CSP, embedded no-build-step frontend, resolutions manager plus the
+      resolver flow over an internal JSON API
+- [ ] Web UI depth: evidence-document entry in the approve form, richer
+      candidate detail (price breaks, links), and a persistent-port
+      convenience mode with an operator-supplied token
 - [ ] Interactive alternatives review: browse the compatibility matrix and
       hand a chosen candidate to the approve form
 

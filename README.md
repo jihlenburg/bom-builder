@@ -345,6 +345,35 @@ receives a machine-readable `INTERACTIVE_TTY_REQUIRED` error instead of a
 hanging screen. Interactive views of live sourcing runs (the pricing
 pipeline the archived Python TUI offered) are a planned later slice.
 
+## Local web UI
+
+```bash
+bom-builder serve
+```
+
+The same resolutions manager and resolver flow as the terminal interface,
+rendered in your browser. `serve` prints one JSON startup document with a
+tokenized URL, then serves until Ctrl+C:
+
+```json
+{"command": "serve", "url": "http://127.0.0.1:38099/?token=…", "...": "…"}
+```
+
+Open the URL to browse records and audit history, approve and revoke (with
+the same content-bound preview/confirm handshake), and resolve parts through
+the same provider pipeline as `lookup`. Approving from a candidate never
+prefills the approver's name.
+
+Local-only by design, in depth: the listener must be a loopback address
+(non-loopback `--listen` values are refused), every API request needs the
+per-session bearer token from the printed URL, the Host header must be a
+loopback name (DNS-rebinding defense), state-changing browser requests must
+come from a loopback origin, and the page ships a strict Content-Security
+-Policy with no external requests. The frontend is hand-written HTML/CSS/JS
+embedded in the binary — no Node toolchain, no npm dependency tree, no
+build step. Its JSON API is an internal contract between the binary and its
+own frontend; the public machine interface remains the CLI.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and add provider credentials. Existing process
@@ -386,6 +415,7 @@ internal/lookupcache/ versioned SQLite normalized-result persistence
 internal/resolutions/ audited persistence of human-approved resolutions
 internal/sourcing/    provider-independent orchestration and safe totals
 internal/tui/         interactive terminal mode (resolutions manager)
+internal/webui/       local web interface (loopback HTTP + embedded frontend)
 internal/alternatives/ candidate loading and compatibility evaluation
 internal/documents/   evidence links and safe PDF retrieval
 internal/app/         build and version metadata

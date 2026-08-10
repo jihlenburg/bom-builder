@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>BOM Builder — approved resolutions</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header>
+  <h1>BOM Builder — approved resolutions</h1>
+  <p id="store-line" class="dim"></p>
+</header>
+
+<p id="message" class="message" hidden></p>
+
+<section id="resolver-card" hidden>
+  <h2>Resolve a part</h2>
+  <p class="dim">Source one part, review the candidates, and record the human decision.</p>
+  <form id="lookup-form" class="grid">
+    <label>Part number <input name="part_number" required></label>
+    <label>Manufacturer <input name="manufacturer" required></label>
+    <label>Quantity <input name="quantity" type="number" min="1" value="1"></label>
+    <label>Providers <input name="providers" value="auto"></label>
+    <button type="submit" id="lookup-button">Look up</button>
+  </form>
+  <div id="candidates" hidden>
+    <h3 id="candidates-title"></h3>
+    <p id="candidates-issue" class="dim" hidden></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Provider</th><th>Match</th><th>MPN</th><th>SKU</th>
+          <th>Stock</th><th>Unit price</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="candidates-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Approve a resolution</h2>
+  <form id="approve-form" class="grid">
+    <label>Original manufacturer <input name="manufacturer" required></label>
+    <label>Original part number <input name="part_number" required></label>
+    <label>Replacement manufacturer <input name="replacement_manufacturer" required></label>
+    <label>Replacement part number <input name="replacement_part_number" required></label>
+    <label>Provider (optional) <input name="provider" placeholder="mouser|digikey|ti|nxp|microchip"></label>
+    <label>Provider SKU (optional) <input name="provider_sku"></label>
+    <label class="wide">Approved by <input name="approved_by" required
+      placeholder="person clearing engineering review — never prefilled"></label>
+    <label class="wide">Note (optional) <input name="note"></label>
+    <button type="submit">Approve</button>
+  </form>
+</section>
+
+<section>
+  <h2>Resolutions</h2>
+  <div class="toolbar">
+    <label><input type="checkbox" id="include-inactive"> show inactive</label>
+    <button id="refresh-button" type="button">Refresh</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Status</th><th>Original</th><th>Replacement</th>
+        <th>Provider</th><th>Approved by</th><th>Updated</th>
+      </tr>
+    </thead>
+    <tbody id="records-body"></tbody>
+  </table>
+</section>
+
+<section id="detail-card" hidden>
+  <h2 id="detail-title"></h2>
+  <dl id="detail-list"></dl>
+  <div id="revoke-area" hidden>
+    <h3>Revoke</h3>
+    <form id="revoke-form" class="grid">
+      <label>Revoked by <input name="revoked_by" required></label>
+      <label>Reason (optional) <input name="reason"></label>
+      <button type="submit" id="revoke-button">Preview revoke</button>
+    </form>
+    <p id="revoke-preview" class="dim" hidden></p>
+  </div>
+  <h3>Audit history</h3>
+  <ul id="history-list"></ul>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

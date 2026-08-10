@@ -54,8 +54,13 @@ func runInteractive(args []string, stdin io.Reader, stdout io.Writer) int {
 // cache, and selection semantics as the lookup command. Runtimes are
 // constructed per call and torn down afterwards, so a lookup made hours
 // into a session sees current configuration and holds no idle browser or
-// token state between resolutions.
-func interactiveLookupRunner() tui.LookupRunner {
+// token state between resolutions. The unnamed func type is assignable to
+// both tui.LookupRunner and webui.LookupRunner.
+func interactiveLookupRunner() func(
+	context.Context,
+	procurement.Demand,
+	string,
+) (procurement.SourcedPart, error) {
 	return func(
 		ctx context.Context,
 		demand procurement.Demand,

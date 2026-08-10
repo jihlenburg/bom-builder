@@ -77,6 +77,7 @@ Commands:
   documents fetch <url>    Download and verify one PDF without overwriting
   export ec-bom <file|->   Write a Eurocircuits assembly BOM (upload-ready CSV)
   interactive              Manage approved resolutions in a terminal UI
+  serve                    Serve the local web UI for approved resolutions
   providers list           Report safe provider configuration facts
   providers check          Run configuration or bounded live checks
   resolutions <subcommand> Record and audit human-approved part resolutions
@@ -304,6 +305,29 @@ This is the one command that does not emit JSON on stdout: it renders a
 human interface and refuses to start when stdin or stdout is not a
 terminal, so scripts and agents always get a machine-readable error
 instead of a hanging screen.
+	`,
+	"serve": `Usage:
+  bom-builder serve [--listen 127.0.0.1:0] [--resolutions-db <path>]
+
+Serves the local web interface for approved resolutions: browse records
+and audit history, approve and revoke with the same person-named rules as
+the JSON commands, and resolve parts through the same provider pipeline
+as lookup. The frontend is embedded in the binary; nothing is fetched
+from the network.
+
+Local-only by design: the listener must be a loopback address (non-loopback
+--listen values are refused), every request needs the per-session token
+embedded in the printed URL, and DNS-rebinding and cross-origin browser
+requests are rejected.
+
+Stdout carries exactly one JSON startup document containing the URL; the
+process then serves until Ctrl+C. Progress notes go to stderr. The web
+API is an internal contract between the binary and its own frontend — the
+public machine interface remains the CLI.
+
+Example:
+  bom-builder serve
+  bom-builder serve --listen 127.0.0.1:8722 --pretty
 	`,
 	"resolutions revoke": `Usage:
   bom-builder resolutions revoke --id <resolution-id> --revoked-by <name>
