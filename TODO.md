@@ -200,7 +200,9 @@ and quality item from the Python roadmap.
 
 ## Code review remediation (2026-07-31)
 
-Findings, file:line detail, and fix order live in `CODE_REVIEW_2026-07-31.md`.
+The review is remediated and its report has been removed from the working
+tree. Findings, file:line detail, and fix order remain available in Git
+history (`git show 1647847:CODE_REVIEW_2026-07-31.md`).
 
 - [x] C1 `money.Parse` fraction overflow wrapping to a negative Decimal
 - [x] C2 digit-free separator input parsing as a zero price
