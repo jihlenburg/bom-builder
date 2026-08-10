@@ -426,7 +426,7 @@ func emitCacheCommandError(
 
 func isNativeProvider(name string) bool {
 	switch name {
-	case "mouser", "digikey", "ti", "nxp":
+	case "mouser", "digikey", "ti":
 		return true
 	default:
 		return false

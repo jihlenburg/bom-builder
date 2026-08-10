@@ -62,7 +62,6 @@ type Features struct {
 	DatasheetDownloads          bool `json:"datasheet_downloads"`
 	PersistentLookupCache       bool `json:"persistent_lookup_cache"`
 	NativeGoBinary              bool `json:"native_go_binary"`
-	NXPRequiresSystemBrowser    bool `json:"nxp_requires_system_browser"`
 	TITransportImplementation   bool `json:"ti_transport_implemented"`
 	ConcurrentProviderExecution bool `json:"concurrent_provider_execution"`
 }
@@ -111,7 +110,6 @@ type ProviderDetails struct {
 	AccountIDConfigured    *bool   `json:"account_id_configured,omitempty"`
 	AuthenticationRequired *bool   `json:"authentication_required,omitempty"`
 	Locale                 *Locale `json:"locale,omitempty"`
-	SystemBrowser          string  `json:"system_browser,omitempty"`
 	Model                  string  `json:"model,omitempty"`
 	ResultCount            *int    `json:"result_count,omitempty"`
 	MatchedPartNumber      string  `json:"matched_part_number,omitempty"`

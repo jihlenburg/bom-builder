@@ -75,9 +75,6 @@ func TestLoadDotEnvRefusesIntroducingRestrictedKeys(t *testing.T) {
 		"BOM_BUILDER_DIGIKEY_TOKEN_URL",
 		"BOM_BUILDER_TI_PRODUCTS_URL",
 		"BOM_BUILDER_TI_TOKEN_URL",
-		"BOM_BUILDER_NXP_SEARCH_URL",
-		"BOM_BUILDER_NXP_PART_URL",
-		"BOM_BUILDER_NXP_BROWSER",
 		"BOM_BUILDER_CACHE_DB",
 	} {
 		path := filepath.Join(t.TempDir(), ".env")

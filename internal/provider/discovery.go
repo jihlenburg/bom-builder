@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
-	"github.com/jihlenburg/bom-builder/internal/provider/nxp"
 )
 
 // Discover returns provider configuration facts without contacting a network.
@@ -19,7 +18,6 @@ func Discover() contract.ProviderDiscoveryEnvelope {
 		mouserCapability(),
 		digiKeyCapability(),
 		tiCapability(),
-		nxpCapability(),
 		microchipCapability(),
 		serviceCapability("ecb", true, contract.ProviderDetails{
 			Implementation:         "pending",
@@ -95,36 +93,6 @@ func tiCapability() contract.ProviderCapability {
 	if capability.Configured {
 		capability.Status = "ready"
 	} else {
-		capability.Status = "unconfigured"
-	}
-	return capability
-}
-
-func nxpCapability() contract.ProviderCapability {
-	browser := strings.TrimSpace(os.Getenv("BOM_BUILDER_NXP_BROWSER"))
-	if browser == "" {
-		browser = nxp.FindSystemBrowser()
-	}
-	configured := false
-	if info, err := os.Stat(browser); err == nil && !info.IsDir() {
-		configured = true
-	}
-	capability := distributorCapability("nxp", configured, contract.ProviderDetails{
-		Implementation:         "native_go_cdp",
-		Currency:               strings.ToUpper(envDefault("NXP_STORE_CURRENCY", "USD")),
-		AuthenticationRequired: boolPointer(false),
-		SystemBrowser:          browser,
-	})
-	capability.Implemented = true
-	switch {
-	case !nxp.PipeTransportSupported():
-		// The browser transport needs POSIX descriptor inheritance, so a
-		// found browser does not make the adapter usable on this host.
-		capability.Configured = false
-		capability.Status = "unsupported_platform"
-	case capability.Configured:
-		capability.Status = "ready"
-	default:
 		capability.Status = "unconfigured"
 	}
 	return capability

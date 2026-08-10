@@ -32,7 +32,6 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/provider/digikey"
 	"github.com/jihlenburg/bom-builder/internal/provider/microchip"
 	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
-	"github.com/jihlenburg/bom-builder/internal/provider/nxp"
 	"github.com/jihlenburg/bom-builder/internal/provider/ti"
 	"github.com/jihlenburg/bom-builder/internal/resolutions"
 	"github.com/jihlenburg/bom-builder/internal/sourcing"
@@ -151,8 +150,8 @@ func runCapabilities(args []string, stdout io.Writer) int {
 			"validate",
 		},
 		PlannedCommands:         []string{},
-		Distributors:            []string{"mouser", "digikey", "ti", "nxp"},
-		ImplementedDistributors: []string{"mouser", "digikey", "ti", "nxp"},
+		Distributors:            []string{"mouser", "digikey", "ti"},
+		ImplementedDistributors: []string{"mouser", "digikey", "ti"},
 		Manufacturers:           []string{"microchip"},
 		Services:                []string{"ecb", "openai"},
 		ArtifactFormats:         []string{"json", "pdf", "ec-bom-csv"},
@@ -168,7 +167,6 @@ func runCapabilities(args []string, stdout io.Writer) int {
 			DatasheetDownloads:          true,
 			PersistentLookupCache:       true,
 			NativeGoBinary:              true,
-			NXPRequiresSystemBrowser:    true,
 			TITransportImplementation:   true,
 			ConcurrentProviderExecution: false,
 		},
@@ -694,7 +692,7 @@ func newProviderRuntimes(
 			cacheConfig.Policy == lookupcache.PolicyOffline
 		if cacheOnly {
 			switch name {
-			case "mouser", "digikey", "ti", "nxp", "microchip":
+			case "mouser", "digikey", "ti", "microchip":
 				runtime = providerRuntime{
 					name:         name,
 					requestCount: func() int { return 0 },
@@ -788,28 +786,6 @@ func newProviderRuntimes(
 					name:         name,
 					resolver:     resolver,
 					requestCount: client.RequestCount,
-				}
-			case "nxp":
-				client, err := nxp.NewFromEnvironment()
-				if err != nil {
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "configuration", cause: err,
-					}
-				}
-				resolver, err := nxp.NewResolver(client)
-				if err != nil {
-					client.Close()
-					closeProviderRuntimeResources(runtimes, cacheSession)
-					return nil, nil, &providerRuntimeSetupError{
-						provider: name, kind: "internal", cause: err,
-					}
-				}
-				runtime = providerRuntime{
-					name:         name,
-					resolver:     resolver,
-					requestCount: client.RequestCount,
-					close:        client.Close,
 				}
 			default:
 				closeProviderRuntimeResources(runtimes, cacheSession)
@@ -1069,7 +1045,7 @@ func resolveProviderSelection(
 		strings.EqualFold(strings.TrimSpace(value), "all") {
 		if cachePolicy == lookupcache.PolicyOnly ||
 			cachePolicy == lookupcache.PolicyOffline {
-			return []string{"mouser", "digikey", "ti", "nxp"}, nil
+			return []string{"mouser", "digikey", "ti"}, nil
 		}
 		var selected []string
 		for _, capability := range provider.Discover().Providers {
@@ -1089,7 +1065,7 @@ func resolveProviderSelection(
 	}
 	for _, name := range providers {
 		if name != "mouser" && name != "digikey" && name != "ti" &&
-			name != "nxp" && name != "microchip" {
+			name != "microchip" {
 			return nil, fmt.Errorf("provider %s has no native pricing adapter", name)
 		}
 	}
@@ -1107,7 +1083,7 @@ func emitProviderSelectionError(
 			stdout,
 			command,
 			"PROVIDER_CONFIGURATION_ERROR",
-			"no configured native pricing provider; configure a distributor API or install Chrome/Edge for NXP",
+			"no configured native pricing provider; configure a distributor API",
 			contract.ExitProvider,
 			pretty,
 		)

@@ -19,6 +19,7 @@
 - [x] Compare safe Mouser and Digi-Key plans with per-provider provenance
 - [x] Implement and live-verify the pure-Go TI Store adapter
 - [x] Implement and live-verify the browser-backed native Go NXP adapter
+      (later removed 2026-08-10 as a dead end; preserved in Git history)
 - [x] Add safe datasheet discovery and verified PDF downloads
 - [x] Add stock-aware resistor, capacitor, and inductor alternative evaluation
 - [x] Add the versioned native SQLite lookup cache and safe management commands
@@ -42,3 +43,7 @@
 - [x] Add the local web UI (`bom-builder serve`): loopback-only, token-
       gated, embedded stdlib-only frontend mirroring the TUI, verified
       end to end in a headless browser
+- [x] Remove the NXP Store adapter and all of its wiring (provider
+      package, discovery, health, selection, cache identity, restricted
+      env keys, schemas, docs); keep historical values readable in stored
+      resolutions and cache listings

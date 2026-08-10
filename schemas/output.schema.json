@@ -29,7 +29,7 @@
             "type": "object",
             "required": ["name", "request_count"],
             "properties": {
-              "name": {"enum": ["mouser", "digikey", "ti", "nxp"]},
+              "name": {"enum": ["mouser", "digikey", "ti"]},
               "request_count": {"type": "integer", "minimum": 0}
             }
           }
@@ -204,7 +204,7 @@
       ],
       "properties": {
         "kind": {"enum": ["datasheet", "product_page"]},
-        "provider": {"enum": ["mouser", "digikey", "ti", "nxp"]},
+        "provider": {"enum": ["mouser", "digikey", "ti"]},
         "url": {"type": "string", "format": "uri"},
         "manufacturer_part_number": {"type": "string"},
         "preferred": {"type": "boolean"},
@@ -323,7 +323,7 @@
           ]
         },
         "selected_provider": {
-          "enum": ["mouser", "digikey", "ti", "nxp"]
+          "enum": ["mouser", "digikey", "ti"]
         },
         "selected_distributor_part_number": {"type": "string"},
         "offer": {"$ref": "#/$defs/offer"},
@@ -375,7 +375,7 @@
         "required_quantity"
       ],
       "properties": {
-        "provider": {"enum": ["mouser", "digikey", "ti", "nxp"]},
+        "provider": {"enum": ["mouser", "digikey", "ti"]},
         "distributor_part_number": {"type": "string"},
         "manufacturer_part_number": {"type": "string"},
         "manufacturer": {"type": "string"},

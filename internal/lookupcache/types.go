@@ -94,8 +94,6 @@ func AdapterVersion(provider string) string {
 		return "digikey-normalized-v2"
 	case "ti":
 		return "ti-normalized-v1"
-	case "nxp":
-		return "nxp-normalized-v1"
 	case "microchip":
 		return "microchip-normalized-v1"
 	default:
@@ -120,12 +118,13 @@ func ProviderContextHash(provider string) string {
 	case "ti":
 		values["products_url"] = envValue("BOM_BUILDER_TI_PRODUCTS_URL")
 		values["currency"] = envDefault("TI_STORE_PRICE_CURRENCY", "USD")
-	case "nxp":
-		values["search_url"] = envValue("BOM_BUILDER_NXP_SEARCH_URL")
-		values["part_url"] = envValue("BOM_BUILDER_NXP_PART_URL")
 	case "microchip":
+		// No currency in this context: the Product API carries no
+		// pricing. (Until 2026-08-10 this case wrongly hashed
+		// NXP_STORE_CURRENCY — a copy-paste from the removed NXP
+		// adapter — so changing that unrelated variable re-keyed
+		// microchip cache entries.)
 		values["products_url"] = envValue("BOM_BUILDER_MICROCHIP_PRODUCTS_URL")
-		values["currency"] = envDefault("NXP_STORE_CURRENCY", "USD")
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {

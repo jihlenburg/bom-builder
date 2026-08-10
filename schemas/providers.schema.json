@@ -30,14 +30,7 @@
           "implemented": {"type": "boolean"},
           "configured": {"type": "boolean"},
           "status": {
-            "enum": [
-              "ok",
-              "ready",
-              "failed",
-              "pending",
-              "unconfigured",
-              "unsupported_platform"
-            ]
+            "enum": ["ok", "ready", "failed", "pending", "unconfigured"]
           },
           "live": {"type": "boolean"},
           "latency_ms": {"type": "integer", "minimum": 0},

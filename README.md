@@ -1,7 +1,7 @@
 # BOM Builder
 
 BOM Builder is a native Go CLI for electronic BOM sourcing and pricing across
-Mouser, Digi-Key, TI, and NXP.
+Mouser, Digi-Key, and TI.
 
 Current Go milestone: `3.0.0-dev`
 
@@ -14,8 +14,6 @@ Current Go milestone: `3.0.0-dev`
 - Live Mouser and Digi-Key health checks, lookup, and quantity pricing
 - Live TI Store health checks, direct inventory, lifecycle, order-limit, and
   price-break sourcing
-- Live NXP Store health checks and direct inventory/pricing through a private,
-  headless Chrome/Edge session
 - Multi-provider comparison with every normalized offer retained in JSON
 - Exact six-place decimal prices and stock-aware purchase plans
 - Digi-Key OAuth token reuse, locale/account pricing, and composite SKU plans
@@ -31,9 +29,7 @@ Current Go milestone: `3.0.0-dev`
 - Durable, audited persistence of human-approved part resolutions with
   preview/apply revocation
 - Stable JSON stdout and process exit codes
-- Verified Windows cross-compilation in the check pipeline (the NXP
-  browser adapter is not yet available on Windows and reports that
-  explicitly)
+- Verified Windows cross-compilation in the check pipeline
 
 Reports are being ported in focused slices.
 `bom-builder capabilities --full` is the authoritative way for a coding agent
@@ -70,17 +66,14 @@ any other runtime on the target machine.
 
 Windows is a supported compilation target: `make check` cross-compiles and
 vets every package for `windows/amd64` (`make windows` runs that gate alone).
-The pure-Go SQLite driver works unchanged on Windows, and Chrome/Edge
-discovery knows the Windows installation paths. One adapter is excluded so
-far: the NXP browser transport rides on POSIX file-descriptor inheritance and
-reports `unsupported_platform` on Windows instead of failing mid-run.
+The pure-Go SQLite driver works unchanged on Windows.
 
 ## Agent discovery
 
 ```bash
 ./bin/bom-builder capabilities --full --pretty
 ./bin/bom-builder providers list --pretty
-./bin/bom-builder providers check --providers mouser,digikey,ti,nxp --live --pretty
+./bin/bom-builder providers check --providers mouser,digikey,ti --live --pretty
 ./bin/bom-builder schema input --pretty
 ./bin/bom-builder help documents
 ```
@@ -111,7 +104,7 @@ trailing JSON values, and oversized input documents are rejected.
 ./bin/bom-builder price examples/example-power-supply.json \
   --units 100 \
   --attrition 0.02 \
-  --providers mouser,digikey,ti,nxp \
+  --providers mouser,digikey,ti \
   --pretty
 ```
 
@@ -126,14 +119,6 @@ TI direct-store lookups are automatically skipped for non-TI manufacturers.
 Known non-active lifecycle states and generic-to-orderable part resolutions
 remain review-required; stock and TI Store order limits must both cover the
 purchase plan before it can be selected.
-
-NXP direct-store lookups are automatically skipped for non-NXP/Freescale
-manufacturers. The adapter starts an isolated headless Chrome or Edge process
-and communicates with it directly over the Chrome DevTools Protocol; it does
-not require Playwright or a browser extension. The temporary browser
-profile is deleted when the command ends. Exact orderable MPNs, confirmed MOQ
-and package multiples, and sufficient reported stock are all required for a
-selected plan. Base-part to packaging-suffix matches remain review-required.
 
 When more than one provider is selected, each normalized candidate is returned
 in `parts[].offers`, while `parts[].offer` is the chosen safe plan. Plans in
@@ -412,11 +397,6 @@ own frontend; the public machine interface remains the CLI.
 Copy `.env.example` to `.env` and add provider credentials. Existing process
 environment variables take precedence. `.env` parsing never evaluates shell
 syntax.
-
-NXP needs no credentials, but requires an installed Google Chrome, Chromium, or
-Microsoft Edge executable. BOM Builder discovers common locations
-automatically; set `BOM_BUILDER_NXP_BROWSER` when the executable is elsewhere.
-Set `NXP_STORE_CURRENCY` explicitly for the store context you intend to use.
 
 Run `./bin/bom-builder help` for concise examples, or
 `./bin/bom-builder capabilities --full` for the authoritative machine-readable

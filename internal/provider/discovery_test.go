@@ -61,11 +61,9 @@ func TestDiscoverReportsPresenceWithoutCredentialValues(t *testing.T) {
 		ti.Details.Currency != "EUR" {
 		t.Fatalf("TI should be advertised as ready: %#v", ti)
 	}
-	nxp := discovery.Providers[3]
-	if !nxp.Implemented ||
-		nxp.Details.Implementation != "native_go_cdp" ||
-		nxp.Details.AuthenticationRequired == nil ||
-		*nxp.Details.AuthenticationRequired {
-		t.Fatalf("NXP should be advertised as a native browser adapter: %#v", nxp)
+	microchip := discovery.Providers[3]
+	if !microchip.Implemented || microchip.Kind != "manufacturer" ||
+		microchip.Status != "ready" {
+		t.Fatalf("Microchip should be advertised as a ready manufacturer source: %#v", microchip)
 	}
 }

@@ -114,6 +114,8 @@ and quality item from the Python roadmap.
 - [x] TI OAuth/store pricing without exposing secrets to process arguments or
       requiring an external `curl` executable
 - [x] NXP direct sourcing through a documented browser/CDP boundary
+      (REMOVED 2026-08-10: the store adapter was retired as a dead end —
+      see LOGBOOK; the code lives on in Git history)
 - [ ] EVALUATED AND NOT PURSUED (2026-07-30): a `microchipdirect` provider
       on the NXP headless-CDP pattern. Feasibility spike failed decisively:
       microchipdirect.com resets plain TLS clients at connection level
@@ -154,7 +156,7 @@ and quality item from the Python roadmap.
       fail-closed on unreachable quotes or unquoted currencies)
 - [ ] Optional OpenAI evidence ranking that never clears engineering review
 - [x] Complete live health coverage for every implemented distributor;
-      Mouser, Digi-Key, TI, and NXP checks report latency, currency/locale,
+      Mouser, Digi-Key, and TI checks report latency, currency/locale,
       request counts, and available provider-specific metadata
 
 ## Procurement safety
@@ -295,7 +297,7 @@ history (`git show 1647847:CODE_REVIEW_2026-07-31.md`).
       tests; sanitizer truncation now UTF-8-safe in all three adapters
 - [ ] Remaining CLI error-path tests (provider-config errors, bounds,
       `--pretty` shape, empty-stderr assertion)
-- [ ] Remaining Minor findings per review file (Retry-After handling, NXP
-      PartDetail fixed sleep, Mouser short-MPN state, diacritic folding,
+- [ ] Remaining Minor findings per review file (Retry-After handling,
+      Mouser short-MPN state, diacritic folding,
       providerutil dedup, help/typo polish, cache exit-code split, eC-BOM
       quantity/designator consistency and formula guard)

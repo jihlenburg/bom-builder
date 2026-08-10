@@ -152,6 +152,10 @@ func validatePartNumber(field, value string) error {
 
 func validateReplacementProvider(replacement Replacement) error {
 	switch replacement.Provider {
+	// "nxp" stays accepted although its adapter was removed: resolutions
+	// are durable records, and rejecting the value would make previously
+	// stored approvals unreadable as corrupt. An nxp pin simply never
+	// matches an offer anymore.
 	case "", "mouser", "digikey", "ti", "nxp", "microchip":
 	default:
 		return fmt.Errorf(

@@ -1,5 +1,45 @@
 # Logbook
 
+## 2026-08-10 (NXP adapter removed)
+
+- Removed the NXP Store adapter (`internal/provider/nxp`, ~2600 lines with
+  tests) on the owner's call that the approach was not going anywhere. The
+  adapter was always the odd one out: a headless-browser/CDP scrape of a
+  storefront rather than a supported API, carrying a runtime browser
+  dependency, a POSIX-only pipe transport that excluded Windows
+  (`unsupported_platform`), and ongoing exposure to storefront markup
+  drift. The code and its full history remain in Git
+  (`git show HEAD~1:internal/provider/nxp/client.go` etc.).
+- Unwired everywhere active behavior is defined: provider runtime
+  construction and selection (`--providers auto` is now mouser,digikey,ti),
+  discovery, live health checks, cache adapter identity and context hash,
+  the `unsupported_platform` status (nothing emits it now), the
+  `nxp_requires_system_browser` feature flag and `system_browser` detail
+  field, restricted `.env` keys (`BOM_BUILDER_NXP_*`), `.env.example`,
+  README/help/UI placeholder text, and the Windows-exclusion notes —
+  Windows now has no excluded adapters.
+- Durable data stays readable, deliberately: stored resolutions may pin
+  provider "nxp", and old lookup-cache databases contain nxp rows. The
+  resolutions validation keeps accepting "nxp" (a rejected value would
+  make previously approved records decode as corrupt), the appliedResolution
+  and cache schemas keep the value with an explanatory description, and an
+  nxp pin simply never matches an offer again. Active-behavior schema
+  enums (run providers, offers, document links, selected_provider) dropped
+  the value.
+- One test expectation moved for real reasons: the cache-only lookup run
+  now reports 2 misses instead of 3 — one fewer provider is consulted.
+- The removal sweep surfaced a pre-existing bug: the microchip
+  cache-context hash included `NXP_STORE_CURRENCY` (a copy-paste from the
+  NXP case), so changing that unrelated variable silently re-keyed
+  microchip cache entries — for a provider that has no pricing at all.
+  Fixed by dropping the currency from the microchip context; existing
+  microchip cache entries are re-keyed once by this correction and simply
+  refresh on next use.
+- Note for NXP-manufactured parts: they are still sourced normally through
+  Mouser and Digi-Key (manufacturer-name normalization for NXP
+  Semiconductors spellings in the Mouser adapter is untouched); what was
+  removed is only the direct nxp.com storefront adapter.
+
 ## 2026-08-10 (FX layer: dated ECB quotes)
 
 - Added `internal/fx`: dated foreign-exchange reference quotes and exact

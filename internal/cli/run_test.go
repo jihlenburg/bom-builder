@@ -476,7 +476,7 @@ func TestLookupCacheReusesNormalizedResultWithoutCredentials(t *testing.T) {
 		secondPayload.Run.RequestCount != 0 ||
 		secondPayload.Run.Cache.Policy != "only" ||
 		secondPayload.Run.Cache.Hits != 1 ||
-		secondPayload.Run.Cache.Misses != 3 ||
+		secondPayload.Run.Cache.Misses != 2 ||
 		secondPayload.Run.Cache.ReusedSourceRequests != 1 ||
 		len(secondPayload.Parts) != 1 ||
 		secondPayload.Parts[0].Status != "priced" {
@@ -1173,52 +1173,6 @@ func TestProviderCheckCanRunLiveTIProbe(t *testing.T) {
 		payload.Providers[0].RequestCount != 2 ||
 		payload.Providers[0].Details.Currency != "USD" ||
 		payload.Providers[0].Details.MatchedPartNumber != "TMP421AQDCNRQ1" {
-		t.Fatalf("unexpected output: %s", stdout.String())
-	}
-}
-
-func TestLookupAcceptsNXPAndSkipsBrowserForOtherManufacturers(t *testing.T) {
-	t.Chdir(t.TempDir())
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("BOM_BUILDER_NXP_BROWSER", executable)
-	var stdout bytes.Buffer
-
-	exitCode := Run(
-		[]string{
-			"lookup", "RC0402FR-0710KL",
-			"--manufacturer", "Yageo",
-			"--quantity", "100",
-			"--providers", "nxp",
-		},
-		strings.NewReader(""),
-		&stdout,
-		&bytes.Buffer{},
-	)
-	if exitCode != 3 {
-		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
-	}
-	var payload struct {
-		Run struct {
-			Providers []struct {
-				Name         string `json:"name"`
-				RequestCount int    `json:"request_count"`
-			} `json:"providers"`
-		} `json:"run"`
-		Parts []struct {
-			Status string `json:"status"`
-		} `json:"parts"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if len(payload.Run.Providers) != 1 ||
-		payload.Run.Providers[0].Name != "nxp" ||
-		payload.Run.Providers[0].RequestCount != 0 ||
-		len(payload.Parts) != 1 ||
-		payload.Parts[0].Status != "not_applicable" {
 		t.Fatalf("unexpected output: %s", stdout.String())
 	}
 }

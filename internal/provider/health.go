@@ -13,7 +13,6 @@ import (
 	"github.com/jihlenburg/bom-builder/internal/provider/digikey"
 	"github.com/jihlenburg/bom-builder/internal/provider/microchip"
 	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
-	"github.com/jihlenburg/bom-builder/internal/provider/nxp"
 	"github.com/jihlenburg/bom-builder/internal/provider/ti"
 )
 
@@ -43,8 +42,6 @@ func Check(
 				capability = checkDigiKey(ctx, capability)
 			case "ti":
 				capability = checkTI(ctx, capability)
-			case "nxp":
-				capability = checkNXP(ctx, capability)
 			case "microchip":
 				capability = checkMicrochip(ctx, capability)
 			}
@@ -62,57 +59,6 @@ func Check(
 		Live:          live,
 		Providers:     filtered,
 	}, nil
-}
-
-func checkNXP(
-	ctx context.Context,
-	capability contract.ProviderCapability,
-) contract.ProviderCapability {
-	capability.Live = true
-	if !capability.Configured {
-		capability.Status = "failed"
-		capability.ErrorCode = "NOT_CONFIGURED"
-		capability.ErrorMessage = "Chrome or Edge is required for the NXP Store adapter"
-		return capability
-	}
-	client, err := nxp.NewFromEnvironment()
-	if err != nil {
-		capability.Status = "failed"
-		capability.ErrorCode = "CONFIGURATION_ERROR"
-		capability.ErrorMessage = err.Error()
-		return capability
-	}
-	defer client.Close()
-	started := time.Now()
-	result, err := client.Search(ctx, "KW47B42ZB7AFTBT")
-	latency := time.Since(started).Milliseconds()
-	capability.LatencyMS = &latency
-	capability.RequestCount = client.RequestCount()
-	if err != nil {
-		capability.Status = "failed"
-		capability.ErrorCode = providerErrorCode(err)
-		capability.ErrorMessage = err.Error()
-		return capability
-	}
-	if result == nil ||
-		!strings.EqualFold(result.PartID, "KW47B42ZB7AFTBT") {
-		capability.Status = "failed"
-		capability.ErrorCode = "UNEXPECTED_RESULT"
-		capability.ErrorMessage = "representative NXP Store search returned an unexpected product"
-		return capability
-	}
-	if !result.BuyDirect || len(result.StepPrices) == 0 {
-		capability.Status = "failed"
-		capability.ErrorCode = "EMPTY_RESULT"
-		capability.ErrorMessage = "representative NXP Store search returned no direct pricing"
-		return capability
-	}
-	capability.Status = "ok"
-	resultCount := len(result.StepPrices)
-	capability.Details.ResultCount = &resultCount
-	capability.Details.MatchedPartNumber = result.PartID
-	capability.Details.Currency = result.Currency
-	return capability
 }
 
 func checkMicrochip(
@@ -313,7 +259,7 @@ func selectedNames(names []string) (map[string]struct{}, error) {
 		names = []string{"all"}
 	}
 	known := map[string]struct{}{
-		"mouser": {}, "digikey": {}, "ti": {}, "nxp": {},
+		"mouser": {}, "digikey": {}, "ti": {},
 		"microchip": {}, "ecb": {}, "openai": {},
 	}
 	selected := map[string]struct{}{}
@@ -345,10 +291,6 @@ func providerErrorCode(err error) string {
 	var tiError *ti.Error
 	if errors.As(err, &tiError) {
 		return strings.ToUpper(tiError.Kind)
-	}
-	var nxpError *nxp.Error
-	if errors.As(err, &nxpError) {
-		return strings.ToUpper(nxpError.Kind)
 	}
 	var microchipError *microchip.Error
 	if errors.As(err, &microchipError) {
