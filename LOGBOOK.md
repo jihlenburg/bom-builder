@@ -1,5 +1,38 @@
 # Logbook
 
+## 2026-08-10 (interactive mode, first slice)
+
+- Started the interactive terminal mode: `bom-builder interactive`, a
+  full-screen manager for the approved-resolutions store (list with
+  active/inactive toggle, record detail, per-demand audit history, an
+  approve form, and revocation that runs the content-bound preview/apply
+  handshake under the hood — a concurrent change between preview and apply
+  surfaces as a stale-preview error, exactly like the CLI). The rules match
+  the JSON commands: every decision requires the acting person's name.
+- Framework: the charmbracelet Bubble Tea stack (`bubbletea` v1.3.10,
+  `bubbles`, `lipgloss`) — deliberate new dependencies, documented in the
+  README. Chosen because it is pure Go (no cgo, so the `windows/amd64`
+  check gate still passes and `CGO_ENABLED=0` release builds are
+  unaffected), supports Windows terminals, and keeps Update/View as pure
+  functions. The whole interface is unit-tested without a terminal by
+  driving the model with key messages and asserting on rendered views and
+  store side effects. A GUI toolkit (Fyne class) was not chosen: it would
+  drag in cgo/OpenGL and break the cross-compilation gates; the archived
+  Python implementation's interactive mode was a TUI as well.
+- Protocol boundary kept explicit: `interactive` is the one command exempt
+  from the machine-first JSON stdout contract. It refuses to start when
+  stdin or stdout is not a terminal and emits a machine-readable
+  `INTERACTIVE_TTY_REQUIRED` error instead — scripts and agents can never
+  hang on an invisible screen. `mattn/go-isatty` (already in the tree as an
+  indirect dependency) is now direct for that gate.
+- Test-clock lesson recorded: the model tests initially froze `now`, and an
+  identical re-approval collided on the content+time-derived resolution ID —
+  which is the store behaving correctly. The tests now use a deterministic
+  advancing clock.
+- Later slices tracked in TODO.md: live pricing runs in the interface, the
+  resolver flow for review-required lookups (successor of the Python
+  resolver modal), and interactive alternatives review.
+
 ## 2026-08-10 (resolutions store, Windows target)
 
 - Implemented the approved-resolution store and the `resolutions

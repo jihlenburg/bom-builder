@@ -78,6 +78,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runCache(args[1:], stdout)
 	case "resolutions":
 		return runResolutions(args[1:], stdin, stdout)
+	case "interactive":
+		return runInteractive(args[1:], stdin, stdout)
 	default:
 		return emitError(
 			stdout,
@@ -125,6 +127,7 @@ func runCapabilities(args []string, stdout io.Writer) int {
 			"documents list",
 			"export ec-bom",
 			"help",
+			"interactive",
 			"lookup",
 			"price",
 			"providers list",

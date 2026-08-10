@@ -76,6 +76,7 @@ Commands:
   documents list <mpn>     Discover datasheet and product-page links
   documents fetch <url>    Download and verify one PDF without overwriting
   export ec-bom <file|->   Write a Eurocircuits assembly BOM (upload-ready CSV)
+  interactive              Manage approved resolutions in a terminal UI
   providers list           Report safe provider configuration facts
   providers check          Run configuration or bounded live checks
   resolutions <subcommand> Record and audit human-approved part resolutions
@@ -280,6 +281,22 @@ resolutions are returned.
 
 Returns the append-only audit trail (approved, superseded, revoked), newest
 event first.
+	`,
+	"interactive": `Usage:
+  bom-builder interactive [--resolutions-db <path>]
+
+Full-screen terminal mode for managing approved resolutions: browse active
+and inactive records, inspect details and audit history, approve new
+resolutions, and revoke active ones. Every decision requires the acting
+person's name, exactly like the JSON commands.
+
+Keys: arrows/j/k move · enter detail · a approve · r revoke · h history ·
+i toggle inactive · esc back · ctrl+s submit · q quit
+
+This is the one command that does not emit JSON on stdout: it renders a
+human interface and refuses to start when stdin or stdout is not a
+terminal, so scripts and agents always get a machine-readable error
+instead of a hanging screen.
 	`,
 	"resolutions revoke": `Usage:
   bom-builder resolutions revoke --id <resolution-id> --revoked-by <name>

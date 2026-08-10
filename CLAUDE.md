@@ -17,6 +17,10 @@ on only in Git history.
 - `internal/lookupcache/` owns versioned SQLite normalized-result persistence.
 - `internal/resolutions/` owns audited persistence of human-approved
   resolutions.
+- `internal/tui/` owns the interactive terminal mode (Bubble Tea); its
+  model layer is a pure state machine and must stay testable without a
+  terminal. `interactive` is the only command exempt from the JSON stdout
+  protocol and must keep refusing non-TTY stdio.
 - `internal/config/` owns non-evaluating `.env` loading.
 - `schemas/` contains and embeds the versioned public JSON contracts.
 - `examples/` holds runnable example input documents used by the README.

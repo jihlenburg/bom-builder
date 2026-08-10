@@ -30,6 +30,22 @@ and quality item from the Python roadmap.
 - [ ] Add optional NDJSON progress and structured stderr logging
 - [ ] Add schema compatibility and deprecation policy
 
+## Interactive mode
+
+- [x] Start the interactive terminal mode: `bom-builder interactive` manages
+      the resolutions store (browse, detail, audit history, approve form,
+      preview-bound revoke) on the pure-Go Bubble Tea stack, with a
+      non-TTY refusal (`INTERACTIVE_TTY_REQUIRED`) and a terminal-free
+      model test suite
+- [ ] Interactive live pricing runs: stream `price`-style sourcing progress
+      into the interface (the archived Python TUI's parts table, cost
+      panel, and status bar)
+- [ ] Interactive resolver flow: when a lookup is review-required, present
+      candidates and record the human choice directly into the resolutions
+      store (successor of the Python resolver modal)
+- [ ] Interactive alternatives review: browse the compatibility matrix and
+      hand a chosen candidate to the approve form
+
 ## Core sourcing engine
 
 - [x] Deterministic BOM aggregation with provenance-preserving references

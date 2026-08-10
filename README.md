@@ -56,8 +56,12 @@ Or use Go directly:
 go build -trimpath -o bin/bom-builder ./cmd/bom-builder
 ```
 
-The direct SQLite dependency is pinned to `modernc.org/sqlite v1.55.0`, the
-latest stable release compatible with this baseline. Use, for example,
+Direct dependencies are deliberate and few: `modernc.org/sqlite v1.55.0`
+(pure-Go SQLite for the lookup cache and resolutions store), the
+`charmbracelet` Bubble Tea stack (`bubbletea`, `bubbles`, `lipgloss` — the
+standard pure-Go terminal-interface toolkit powering the interactive mode,
+cgo-free and Windows-capable), and `mattn/go-isatty` (terminal detection so
+interactive mode can refuse pipelines). Use, for example,
 `make GO_TOOLCHAIN=go1.26.5 check` only when deliberately testing another
 compiler.
 
@@ -311,6 +315,25 @@ configuration directory by default. Override the location with
 variable; like every trusted-path override, the variable is refused from
 `.env`.
 
+## Interactive mode
+
+```bash
+bom-builder interactive
+```
+
+A full-screen terminal interface for the same resolutions store: browse
+active and inactive records, inspect details and the audit history, approve
+new resolutions through a form, and revoke active ones. The rules are
+identical to the JSON commands — every decision names the acting person, and
+revocation uses the same content-bound preview under the hood.
+
+Interactive mode is the one deliberate exception to the JSON stdout
+protocol. It renders for a human, and it refuses to start when stdin or
+stdout is not a terminal, so a script or agent that reaches it by mistake
+receives a machine-readable `INTERACTIVE_TTY_REQUIRED` error instead of a
+hanging screen. Interactive views of live sourcing runs (the pricing
+pipeline the archived Python TUI offered) are a planned later slice.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and add provider credentials. Existing process
@@ -351,6 +374,7 @@ internal/provider/    provider discovery, health, and adapters
 internal/lookupcache/ versioned SQLite normalized-result persistence
 internal/resolutions/ audited persistence of human-approved resolutions
 internal/sourcing/    provider-independent orchestration and safe totals
+internal/tui/         interactive terminal mode (resolutions manager)
 internal/alternatives/ candidate loading and compatibility evaluation
 internal/documents/   evidence links and safe PDF retrieval
 internal/app/         build and version metadata

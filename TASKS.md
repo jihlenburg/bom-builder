@@ -34,3 +34,6 @@
       and vet in `make check`, portable SQLite DSNs, Windows browser
       discovery, and an explicit `unsupported_platform` state for the NXP
       pipe transport
+- [x] Start the interactive terminal mode: a Bubble Tea resolutions manager
+      (`bom-builder interactive`) with a TTY gate and a fully testable
+      model layer
