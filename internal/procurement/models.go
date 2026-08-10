@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package procurement
 
 import "github.com/jihlenburg/bom-builder/internal/money"

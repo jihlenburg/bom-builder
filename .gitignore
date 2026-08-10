@@ -26,21 +26,6 @@ test_output.*
 *_output.xlsx
 ~$*.xlsx
 
-# Archived Python implementation artifacts
-legacy/.venv/
-legacy/__pycache__/
-legacy/**/*.py[cod]
-legacy/.pytest_cache/
-legacy/.mypy_cache/
-legacy/.ruff_cache/
-legacy/.coverage
-legacy/htmlcov/
-legacy/build/
-legacy/dist/
-legacy/*.egg-info/
-legacy/docs/_build/
-legacy/docs/api/generated/
-
 # OS-specific junk
 .DS_Store
 **/.DS_Store

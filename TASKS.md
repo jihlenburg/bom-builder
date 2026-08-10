@@ -2,7 +2,6 @@
 
 ## Current Go Rewrite Cycle
 
-- [x] Preserve the Python implementation under `legacy/`
 - [x] Establish a clean Go module at repository root
 - [x] Pin the rewrite to Go 1.25.12 and current compatible dependencies
 - [x] Add typed public contracts and stable exit codes
@@ -26,3 +25,6 @@
 - [x] Implement and live-verify the credential-free Microchip Product API
       availability/lifecycle evidence provider (no pricing, never a
       selected plan)
+- [x] Declare GPL-3.0-or-later: document the license in `README.md` and carry
+      the SPDX identifier in every Go source file
+- [x] Retire the archived Python implementation and its `legacy/` tree

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Command bom-builder exposes the native machine-first BOM Builder CLI.
 package main
 

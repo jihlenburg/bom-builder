@@ -2,10 +2,10 @@
 
 ## Project
 
-BOM Builder is being rebuilt as a native Go CLI for electronic BOM sourcing,
-pricing, provider health, and stock-aware substitution analysis. The former
-Python implementation is preserved under `legacy/` as a behavioral reference
-and fixture source; it is not the active application.
+BOM Builder is a native Go CLI for electronic BOM sourcing, pricing, provider
+health, and stock-aware substitution analysis. The Go implementation is the
+only implementation; the archived Python predecessor has been removed and lives
+on only in Git history.
 
 ## Current architecture
 
@@ -17,7 +17,7 @@ and fixture source; it is not the active application.
 - `internal/lookupcache/` owns versioned SQLite normalized-result persistence.
 - `internal/config/` owns non-evaluating `.env` loading.
 - `schemas/` contains and embeds the versioned public JSON contracts.
-- `legacy/` is read-only unless a task explicitly concerns archival metadata.
+- `examples/` holds runnable example input documents used by the README.
 
 ## Engineering rules
 
@@ -41,6 +41,10 @@ and fixture source; it is not the active application.
   fixtures or local HTTP transports, not live endpoints.
 - Update `TASKS.md`, `TODO.md`, `LOGBOOK.md`, and user documentation for
   substantial work.
+- The project is licensed under GPL-3.0-or-later. Start every new Go file with
+  the copyright line and the `GPL-3.0-or-later` SPDX identifier, followed by a
+  blank line so the package doc comment stays intact. Do not modify `LICENSE`;
+  the GPL text must remain verbatim.
 
 ## Verification
 

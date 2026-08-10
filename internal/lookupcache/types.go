@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package lookupcache persists normalized provider results for deterministic reuse.
 package lookupcache
 

@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package ti implements the Texas Instruments Store Inventory and Pricing API.
 package ti
 

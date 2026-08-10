@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package provider owns safe provider discovery and provider adapter boundaries.
 package provider
 

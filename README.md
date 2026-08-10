@@ -1,14 +1,13 @@
 # BOM Builder
 
 BOM Builder is a native Go CLI for electronic BOM sourcing and pricing across
-Mouser, Digi-Key, TI, and NXP. The Go rewrite is now the active implementation;
-the former Python application is preserved in [`legacy/`](./legacy).
+Mouser, Digi-Key, TI, and NXP.
 
 Current Go milestone: `3.0.0-dev`
 
 ## What works today
 
-- Native Go executable with no Python or virtual-environment dependency
+- Single self-contained executable with no runtime or interpreter dependency
 - Machine-readable capability and schema discovery
 - Safe provider configuration discovery without credential disclosure
 - Strict design JSON validation from files or stdin
@@ -57,8 +56,8 @@ latest stable release compatible with this baseline. Use, for example,
 `make GO_TOOLCHAIN=go1.26.5 check` only when deliberately testing another
 compiler.
 
-The resulting executable does not require Python, a virtual environment, or a
-Go installation on the target machine.
+The resulting executable does not require a Go installation, an interpreter, or
+any other runtime on the target machine.
 
 ## Agent discovery
 
@@ -77,7 +76,7 @@ one JSON document.
 ## Validate a design
 
 ```bash
-./bin/bom-builder validate legacy/designs/example_power_supply.json --pretty
+./bin/bom-builder validate examples/example-power-supply.json --pretty
 generate-design | ./bin/bom-builder validate -
 ```
 
@@ -93,7 +92,7 @@ trailing JSON values, and oversized input documents are rejected.
   --providers auto \
   --pretty
 
-./bin/bom-builder price legacy/designs/example_power_supply.json \
+./bin/bom-builder price examples/example-power-supply.json \
   --units 100 \
   --attrition 0.02 \
   --providers mouser,digikey,ti,nxp \
@@ -115,7 +114,7 @@ purchase plan before it can be selected.
 NXP direct-store lookups are automatically skipped for non-NXP/Freescale
 manufacturers. The adapter starts an isolated headless Chrome or Edge process
 and communicates with it directly over the Chrome DevTools Protocol; it does
-not require Playwright, Python, or a browser extension. The temporary browser
+not require Playwright or a browser extension. The temporary browser
 profile is deleted when the command ends. Exact orderable MPNs, confirmed MOQ
 and package multiples, and sufficient reported stock are all required for a
 selected plan. Base-part to packaging-suffix matches remain review-required.
@@ -292,17 +291,44 @@ contract.
 ## Repository layout
 
 ```text
-cmd/bom-builder/     executable entry point
-internal/cli/        command parsing and JSON protocol
-internal/contract/   public typed contracts
-internal/config/     safe .env loading
-internal/design/     design loading and validation
+cmd/bom-builder/      executable entry point
+internal/cli/         command parsing and JSON protocol
+internal/contract/    public typed contracts
+internal/config/      safe .env loading
+internal/design/      design loading and validation
 internal/bom/         deterministic demand aggregation
 internal/money/       exact fixed-point decimal arithmetic
 internal/procurement/ normalized offers and purchase-plan optimization
 internal/provider/    provider discovery, health, and adapters
 internal/lookupcache/ versioned SQLite normalized-result persistence
 internal/sourcing/    provider-independent orchestration and safe totals
-schemas/             public JSON Schemas and embedded access
-legacy/              archived Python implementation
+internal/alternatives/ candidate loading and compatibility evaluation
+internal/documents/   evidence links and safe PDF retrieval
+internal/app/         build and version metadata
+examples/             runnable example input documents
+schemas/              public JSON Schemas and embedded access
+scripts/              reproducible build helpers
 ```
+
+## License
+
+BOM Builder is free software licensed under the
+[GNU General Public License v3.0 or later](./LICENSE).
+
+```text
+Copyright (C) 2026 Joern Ihlenburg
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+```
+
+Every Go source file carries the `GPL-3.0-or-later` SPDX identifier.

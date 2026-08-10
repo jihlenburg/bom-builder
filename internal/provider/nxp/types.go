@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package nxp implements conservative browser-backed NXP direct-store sourcing.
 package nxp
 

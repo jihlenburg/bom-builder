@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package alternatives implements conservative, deterministic passive-part
 // compatibility checks. It treats unprovided critical data as unknown.
 package alternatives

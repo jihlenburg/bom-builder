@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package microchip sources availability and lifecycle evidence from
 // Microchip's public Product API (Partner Data Exchange). The API is
 // credential-free and returns factory-direct stock, lead times, and

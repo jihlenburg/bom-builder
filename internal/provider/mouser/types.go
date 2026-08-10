@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package mouser
 
 // Part is the subset of Mouser's v2 product contract used by BOM Builder.

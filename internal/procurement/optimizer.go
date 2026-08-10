@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package procurement defines normalized distributor offers and safe purchasing plans.
 package procurement
 

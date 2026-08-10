@@ -7,7 +7,7 @@ and quality item from the Python roadmap.
 
 ## CLI and machine interface
 
-- [x] Native Go executable with no Python runtime dependency
+- [x] Native Go executable with no interpreter or runtime dependency
 - [x] Versioned JSON output and stable process exit codes
 - [x] Strict design loading from files and stdin
 - [x] Embedded input, output, and provider JSON Schemas
@@ -36,8 +36,11 @@ and quality item from the Python roadmap.
 - [ ] Complete the money/FX layer; exact six-place fixed-point money is
       implemented, while dated cross-currency conversion remains
 - [ ] Complete optimizer verification; the native purchase-plan optimizer and
-      legacy behavioral cases are ported, while serialized cross-language
-      golden fixtures remain
+      the Python-era behavioral cases are ported, while serialized
+      cross-language golden fixtures remain. The `legacy/` tree has been
+      removed, so generating fresh cross-language fixtures now requires
+      checking the Python implementation out of Git history
+      (`git show 9f54a22:legacy/optimizer.py`)
 - [x] Define canonical ordering for aggregated parts and Mouser price breaks
 - [x] SQLite normalized-response cache with migrations, WAL, expiry, checksums,
       adapter/context identity, and source-request provenance

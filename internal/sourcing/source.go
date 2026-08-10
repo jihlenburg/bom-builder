@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Joern Ihlenburg
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Package sourcing orchestrates normalized provider resolution and safe totals.
 package sourcing
 
