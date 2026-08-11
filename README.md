@@ -1,39 +1,41 @@
 # BOM Builder
 
-BOM Builder is a native Go CLI for electronic BOM sourcing and pricing across
-Mouser, Digi-Key, and TI.
+BOM Builder sources and prices electronic BOMs across Mouser, Digi-Key, and
+the TI Store. It is a native Go CLI with a machine-first JSON contract, plus
+two human interfaces over the same engine: a full-screen terminal mode and a
+local web UI. Every automated result stays honest about what still needs
+engineering review, and human approvals are recorded durably with a full
+audit trail.
 
-Current Go milestone: `3.0.0-dev`
+Current milestone: `3.0.0-dev`
 
 ## What works today
 
-- Single self-contained executable with no runtime or interpreter dependency
-- Machine-readable capability and schema discovery
-- Safe provider configuration discovery without credential disclosure
-- Strict design JSON validation from files or stdin
-- Live Mouser and Digi-Key health checks, lookup, and quantity pricing
-- Live TI Store health checks, direct inventory, lifecycle, order-limit, and
-  price-break sourcing
-- Multi-provider comparison with every normalized offer retained in JSON
-- Exact six-place decimal prices and stock-aware purchase plans
-- Digi-Key OAuth token reuse, locale/account pricing, and composite SKU plans
-- TI OAuth token reuse through the native Go HTTP stack—no system `curl`
-  dependency
-- Datasheet and product links from normalized Mouser and Digi-Key offers
-- HTTPS-only PDF downloads with size limits, signature checks, no-overwrite
-  output, and SHA-256 artifact metadata
-- Stock-aware resistor, capacitor, and inductor candidate evaluation with a
+- Single self-contained executable; no runtime or interpreter required, and
+  Windows cross-compilation is verified in the check pipeline
+- Machine-readable capability and schema discovery; stable JSON stdout and
+  process exit codes
+- Live Mouser, Digi-Key, and TI Store sourcing: lookup, quantity pricing,
+  stock-aware purchase plans, health checks, and multi-provider comparison
+  with every normalized offer retained in JSON
+- Exact six-place decimal prices; totals in a chosen currency via dated ECB
+  reference quotes
+- Credential-free Microchip factory evidence (availability and lifecycle,
+  no pricing, always review-required)
+- Datasheet and product links, with verified HTTPS-only PDF downloads
+- Stock-aware resistor, capacitor, and inductor alternatives with a
   field-by-field compatibility matrix
-- Versioned SQLite lookup cache with WAL, TTL policies, payload checksums,
-  credential-free cache-only/offline operation, and safe inspection/pruning
-- Durable, audited persistence of human-approved part resolutions with
-  preview/apply revocation
-- Stable JSON stdout and process exit codes
-- Verified Windows cross-compilation in the check pipeline
+- Versioned SQLite lookup cache with safe inspection and preview/apply
+  pruning; cache-only and offline runs need no credentials
+- Durable, audited human-approved resolutions that `lookup` and `price`
+  consume automatically
+- Interactive terminal mode and a local web UI for browsing, resolving, and
+  approving
+- Eurocircuits assembly-BOM CSV export with formula-injection protection
 
-Reports are being ported in focused slices.
+Buyer-oriented report files are still on the roadmap (`TODO.md`).
 `bom-builder capabilities --full` is the authoritative way for a coding agent
-to discover what the installed build can currently do.
+to discover what the installed build can do.
 
 ## Build
 
@@ -52,14 +54,13 @@ Or use Go directly:
 go build -trimpath -o bin/bom-builder ./cmd/bom-builder
 ```
 
-Direct dependencies are deliberate and few: `modernc.org/sqlite v1.55.0`
-(pure-Go SQLite for the lookup cache and resolutions store), the
-`charmbracelet` Bubble Tea stack (`bubbletea`, `bubbles`, `lipgloss` — the
-standard pure-Go terminal-interface toolkit powering the interactive mode,
-cgo-free and Windows-capable), and `mattn/go-isatty` (terminal detection so
-interactive mode can refuse pipelines). Use, for example,
-`make GO_TOOLCHAIN=go1.26.5 check` only when deliberately testing another
-compiler.
+Direct dependencies are few and each has a stated reason:
+`modernc.org/sqlite` (pure-Go SQLite for the lookup cache and resolutions
+store), the charmbracelet Bubble Tea stack (`bubbletea`, `bubbles`,
+`lipgloss` for the terminal interface; cgo-free and Windows-capable), and
+`mattn/go-isatty` (terminal detection so interactive mode can refuse
+pipelines). Use, for example, `make GO_TOOLCHAIN=go1.26.5 check` only when
+deliberately testing another compiler.
 
 The resulting executable does not require a Go installation, an interpreter, or
 any other runtime on the target machine.
@@ -111,17 +112,19 @@ trailing JSON values, and oversized input documents are rejected.
 Prices are JSON strings such as `"0.005000"` so calling agents never receive
 binary floating-point approximations. An offer becomes `selected_plan` only
 when the MPN is exact and reported stock covers the purchase quantity.
-Non-exact candidates remain review-required. `--providers auto` uses every
-configured native provider, and exclusions narrow that automatic set:
-`--providers -ti` (or `auto,-ti`) means "auto without TI". Explicit
-provider selection never requires credentials for providers outside that
-selection, and exclusions cannot be mixed with explicit names — with an
-explicit list, simply leave the unwanted provider out.
+Non-exact candidates remain review-required.
+
+`--providers auto` uses every configured native provider. Exclusions narrow
+that automatic set: `--providers -ti` (or `auto,-ti`) means "auto without
+TI". With an explicit list (`--providers mouser,digikey`), simply leave the
+unwanted provider out; exclusions cannot be mixed with explicit names.
+Explicit selection never requires credentials for providers outside that
+selection.
 
 Every provider is declared once in an in-code registry
-(`internal/provider/registry.go`): construction, discovery, health
-checks, selection, and capability lists all derive from it, so adding the
-next distributor is one adapter package plus one registry entry.
+(`internal/provider/registry.go`). Construction, discovery, health checks,
+selection, and capability lists all derive from it, so adding the next
+distributor is one adapter package plus one registry entry.
 
 TI direct-store lookups are automatically skipped for non-TI manufacturers.
 Known non-active lifecycle states and generic-to-orderable part resolutions
@@ -141,15 +144,15 @@ bom-builder price design.json --units 100 --currency EUR --pretty
 ```
 
 `--currency <ISO>` on `lookup` and `price` converts the summary totals using
-the European Central Bank's dated daily reference quotes (credential-free).
-The conversion is deliberate and visible: the summary reports `quote_source`
-and `quote_date` next to the converted `total_cost`, per-part plans keep
-their native currency, and conversion math is exact — integer micro-units
-with a single half-to-even rounding at the sixth decimal place. Failures are
-explicit: unreachable quotes fail the run before any provider is contacted
-(`FX_QUOTES_UNAVAILABLE`), and a selected plan in a currency the quotes do
-not cover omits the total with `FX_CONVERSION_FAILED` rather than summing a
-subset.
+the European Central Bank's dated daily reference quotes, which need no
+credentials. The summary reports `quote_source` and `quote_date` next to the
+converted `total_cost`, and per-part plans keep their native currency.
+Conversion math is exact: integer micro-units with a single half-to-even
+rounding at the sixth decimal place, never binary floating point. Failures
+are explicit. Unreachable quotes fail the run before any provider is
+contacted (`FX_QUOTES_UNAVAILABLE`), and a selected plan in a currency the
+quotes do not cover omits the whole total with `FX_CONVERSION_FAILED`
+rather than summing a convertible subset.
 
 ## Microchip factory evidence (no pricing)
 
@@ -163,13 +166,13 @@ subset.
 
 The `microchip` provider queries Microchip's public, credential-free
 Product API for factory-direct availability, lead time, lifecycle status
-(REL/EOL), MOQ/order-multiple, and datasheet links. The catalog carries
-no pricing, so results are always review-required evidence with exit
-code `3` and can never become a selected purchase plan — the offer's
-product URL points at microchipDIRECT for the human order decision.
-The provider applies only to Microchip/Atmel parts, is selected
-explicitly (never by `--providers auto`), and participates in the
-lookup cache like every other provider.
+(REL/EOL), MOQ/order-multiple, and datasheet links. The catalog carries no
+pricing, so results are always review-required evidence with exit code `3`
+and can never become a selected purchase plan; the offer's product URL
+points at microchipDIRECT for the human order decision. The provider
+applies only to Microchip/Atmel parts, is selected explicitly (never by
+`--providers auto`), and participates in the lookup cache like every other
+provider.
 
 ## Persistent lookup cache
 
@@ -319,8 +322,8 @@ bom-builder resolutions revoke --id <resolution-id> \
 ```
 
 The token is valid only while the previewed record is unchanged; a concurrent
-approval or revocation invalidates it. The store is SQLite with WAL — the same
-concurrency-safe machinery as the lookup cache — and lives in the per-user
+approval or revocation invalidates it. The store is SQLite with WAL (the same
+concurrency-safe machinery as the lookup cache) and lives in the per-user
 configuration directory by default. Override the location with
 `--resolutions-db` or the `BOM_BUILDER_RESOLUTIONS_DB` process environment
 variable; like every trusted-path override, the variable is refused from
@@ -333,12 +336,12 @@ identity, and the result carries the approval's provenance in
 `--ignore-resolutions` skips the store for one run; a missing database is a
 silent no-op, and read paths never create it.
 
-Review lifting is deliberately narrow. A review-required offer becomes a
+Review lifting is narrow on purpose. A review-required offer becomes a
 selected plan only when the human approval pinned the exact provider SKU
 that came back review-required and its stock-verified plan covers the
-demand — the stored approval *is* the completed engineering review of that
-SKU. Anything looser (different SKU, different provider, unverified stock,
-no pin) keeps the normal review-required outcome, and the envelope reports
+demand; the stored approval is the completed engineering review of that
+SKU. Anything looser (a different SKU or provider, unverified stock, no
+pin) keeps the normal review-required outcome, and the envelope reports
 `review_lifted` explicitly either way.
 
 ## Interactive mode
@@ -347,29 +350,28 @@ no pin) keeps the normal review-required outcome, and the envelope reports
 bom-builder interactive
 ```
 
-A full-screen terminal interface for the same resolutions store: browse
-active and inactive records, inspect details and the audit history, approve
-new resolutions through a form, and revoke active ones. The rules are
-identical to the JSON commands — every decision names the acting person, and
+A full-screen terminal interface for the resolutions store: browse active
+and inactive records, inspect details and the audit history, approve new
+resolutions through a form, and revoke active ones. The rules are identical
+to the JSON commands. Every decision names the acting person, and
 revocation uses the same content-bound preview under the hood.
 
-The resolver flow (`l`) closes the loop between sourcing and decisions: it
-sources one part with the same provider, cache, and selection semantics as
-`lookup`, lists every normalized candidate with match method, stock, price,
-and review status, and seeds the approve form with the chosen candidate —
+The resolver flow (key `l`) connects sourcing to decisions. It sources one
+part with the same provider, cache, and selection semantics as `lookup`,
+lists every normalized candidate with match method, stock, price, and
+review status, then seeds the approve form with the chosen candidate:
 original part, replacement identity, provider SKU, and an evidence note.
 The approver still reviews every field and must type their own name;
 choosing a row never clears engineering review by itself. Provider clients
 are constructed per lookup and torn down afterwards, so a resolution made
-hours into a session sees current configuration and no idle browser or
-token state lingers between lookups.
+hours into a session sees current configuration and holds no token state
+between lookups.
 
-Interactive mode is the one deliberate exception to the JSON stdout
-protocol. It renders for a human, and it refuses to start when stdin or
-stdout is not a terminal, so a script or agent that reaches it by mistake
-receives a machine-readable `INTERACTIVE_TTY_REQUIRED` error instead of a
-hanging screen. Interactive views of live sourcing runs (the pricing
-pipeline the archived Python TUI offered) are a planned later slice.
+Interactive mode is the one exception to the JSON stdout protocol. It
+renders for a human and refuses to start when stdin or stdout is not a
+terminal, so a script or agent that reaches it by mistake receives a
+machine-readable `INTERACTIVE_TTY_REQUIRED` error instead of a hanging
+screen. Interactive views of live sourcing runs are a planned later slice.
 
 ## Local web UI
 
@@ -390,21 +392,28 @@ the same content-bound preview/confirm handshake), and resolve parts through
 the same provider pipeline as `lookup`. Approving from a candidate never
 prefills the approver's name.
 
-Local-only by design, in depth: the listener must be a loopback address
-(non-loopback `--listen` values are refused), every API request needs the
-per-session bearer token from the printed URL, the Host header must be a
-loopback name (DNS-rebinding defense), state-changing browser requests must
-come from a loopback origin, and the page ships a strict Content-Security
--Policy with no external requests. The frontend is hand-written HTML/CSS/JS
-embedded in the binary — no Node toolchain, no npm dependency tree, no
-build step. Its JSON API is an internal contract between the binary and its
-own frontend; the public machine interface remains the CLI.
+The interface is local-only, enforced in depth: the listener must be a
+loopback address (non-loopback `--listen` values are refused), every API
+request needs the per-session bearer token from the printed URL, the Host
+header must be a loopback name (DNS-rebinding defense), state-changing
+browser requests must come from a loopback origin, and the page ships a
+strict Content-Security-Policy that permits no external requests. The
+frontend is hand-written HTML/CSS/JS embedded in the binary, with no Node
+toolchain, npm dependency tree, or build step. Its JSON API is an internal
+contract between the binary and its own frontend; the public machine
+interface remains the CLI.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and add provider credentials. Existing process
-environment variables take precedence. `.env` parsing never evaluates shell
-syntax.
+Copy `.env.example` to `.env` and fill in provider credentials. Existing
+process environment variables take precedence, and `.env` parsing never
+evaluates shell syntax.
+
+Trusted-path and endpoint overrides (`BOM_BUILDER_CACHE_DB`,
+`BOM_BUILDER_RESOLUTIONS_DB`, `BOM_BUILDER_ECB_URL`, and the per-provider
+`*_URL` overrides) are refused from `.env` and must be exported in the
+process environment: a checkout-local file must not be able to redirect
+authenticated traffic or relocate trusted state.
 
 Run `./bin/bom-builder help` for concise examples, or
 `./bin/bom-builder capabilities --full` for the authoritative machine-readable
@@ -423,27 +432,27 @@ contract.
 ## Repository layout
 
 ```text
-cmd/bom-builder/      executable entry point
-internal/cli/         command parsing and JSON protocol
-internal/contract/    public typed contracts
-internal/config/      safe .env loading
-internal/design/      design loading and validation
-internal/bom/         deterministic demand aggregation
-internal/money/       exact fixed-point decimal arithmetic
-internal/fx/          dated ECB quotes and exact currency conversion
-internal/procurement/ normalized offers and purchase-plan optimization
-internal/provider/    provider discovery, health, and adapters
-internal/lookupcache/ versioned SQLite normalized-result persistence
-internal/resolutions/ audited persistence of human-approved resolutions
-internal/sourcing/    provider-independent orchestration and safe totals
-internal/tui/         interactive terminal mode (resolutions manager)
-internal/webui/       local web interface (loopback HTTP + embedded frontend)
+cmd/bom-builder/       executable entry point
+internal/cli/          command parsing and JSON protocol
+internal/contract/     public typed contracts
+internal/config/       safe .env loading
+internal/design/       design loading and validation
+internal/bom/          deterministic demand aggregation and eC-BOM export
+internal/money/        exact fixed-point decimal arithmetic
+internal/fx/           dated ECB quotes and exact currency conversion
+internal/procurement/  normalized offers and purchase-plan optimization
+internal/provider/     provider registry, discovery, health, and adapters
+internal/lookupcache/  versioned SQLite normalized-result persistence
+internal/resolutions/  audited persistence of human-approved resolutions
+internal/sourcing/     provider-independent orchestration and safe totals
+internal/tui/          interactive terminal mode (resolutions manager)
+internal/webui/        local web interface (loopback HTTP, embedded frontend)
 internal/alternatives/ candidate loading and compatibility evaluation
-internal/documents/   evidence links and safe PDF retrieval
-internal/app/         build and version metadata
-examples/             runnable example input documents
-schemas/              public JSON Schemas and embedded access
-scripts/              reproducible build helpers
+internal/documents/    evidence links and safe PDF retrieval
+internal/app/          build and version metadata
+examples/              runnable example input documents
+schemas/               public JSON Schemas and embedded access
+scripts/               reproducible build helpers
 ```
 
 ## License

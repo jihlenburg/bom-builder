@@ -147,6 +147,10 @@ resolution is sourced as its approved replacement and the result carries
 the approval's identity in parts[].resolution. --ignore-resolutions skips
 the store for one run; a missing database is a silent no-op.
 
+--currency <ISO> converts the summary total using the ECB's dated daily
+reference quotes; per-part plans keep their native currency and the
+summary reports quote_source and quote_date.
+
 The "microchip" provider (explicit selection only) returns
 credential-free factory availability and lifecycle EVIDENCE without
 pricing; such results always remain review-required.

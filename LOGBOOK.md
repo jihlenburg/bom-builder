@@ -1,5 +1,29 @@
 # Logbook
 
+## 2026-08-10 (documentation polish)
+
+- Full accuracy pass over every document against current behavior. The one
+  real defect found: `.env.example` still listed `BOM_BUILDER_CACHE_DB=`,
+  which is a RESTRICTED key — copying the example to `.env` verbatim made
+  every command fail with CONFIG_ERROR. It also documented variables that
+  do not exist (`BOM_BUILDER_TARGET_CURRENCY`, `BOM_BUILDER_FX_OVERRIDES`,
+  `BOM_BUILDER_RESOLUTIONS_FILE`) and omitted one that does
+  (`BOM_BUILDER_DIGIKEY_MAX_ATTEMPTS`). The example was rewritten from the
+  actual environment-variable inventory in the code and now explains that
+  trusted-path/endpoint overrides belong in the process environment.
+  Verified end to end: a verbatim copy of the new example runs cleanly.
+- README: intro now names all three interfaces, the feature list was
+  rewritten to cover the current surface (FX conversion, resolutions
+  consumption, interactive mode, web UI, eC-BOM export) instead of the
+  pre-resolutions state, a mid-word line break in "Content-Security-Policy"
+  was fixed, and the configuration section documents the restricted-key
+  rule. CLAUDE.md's architecture list gained the nine packages it was
+  missing and now points at the registry checklist; `internal/provider` is
+  no longer described as owning "future adapters". Help text: `lookup`
+  gained the `--currency` explanation `price` already had. TODO: stale
+  fragments removed (the already-shipped formula guard was still listed as
+  an open minor finding). TASKS caught up with the day's slices.
+
 ## 2026-08-10 (provider registry, exclude syntax)
 
 - Consolidated all provider knowledge into one in-code registry

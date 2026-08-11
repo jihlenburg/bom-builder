@@ -136,8 +136,9 @@ and quality item from the Python roadmap.
       scope for this tool. Use instead: an interactive browser session
       for one-off checks, or Eurocircuits' upload-time sourcing (Microchip
       is an EC preferred DIRECT supplier).
-- [x] `microchip` availability provider via the PUBLIC Product API — IMPLEMENTED + LIVE-VERIFIED 2026-07-31 (see LOGBOOK) —
-      VERIFIED LIVE 2026-07-31 (JI session): documented under Partner Data
+- [x] `microchip` availability provider via the PUBLIC Product API —
+      implemented and VERIFIED LIVE 2026-07-31 (JI session, see LOGBOOK):
+      documented under Partner Data
       Exchange (ProductAPI-user-guide.html), endpoint
       `GET https://www.microchip.com/designresources/product-catalog/api/productInfo`
       `?part=<prefix,min 3 chars>&pagesize&pagenumber`, NO credentials,
@@ -307,6 +308,6 @@ history (`git show 1647847:CODE_REVIEW_2026-07-31.md`).
 - [ ] Remaining CLI error-path tests (provider-config errors, bounds,
       `--pretty` shape, empty-stderr assertion)
 - [ ] Remaining Minor findings per review file (Retry-After handling,
-      Mouser short-MPN state, diacritic folding,
-      providerutil dedup, help/typo polish, cache exit-code split, eC-BOM
-      quantity/designator consistency and formula guard)
+      Mouser short-MPN state, diacritic folding, providerutil dedup,
+      cache exit-code split, eC-BOM quantity/designator consistency);
+      the eC-BOM formula guard and help polish are done

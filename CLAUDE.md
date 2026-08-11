@@ -13,21 +13,39 @@ on only in Git history.
 - `internal/cli/` owns command parsing, dispatch, exit codes, and JSON output.
 - `internal/contract/` owns public machine-interface and design types.
 - `internal/design/` owns strict design JSON loading and validation.
-- `internal/provider/` owns safe provider discovery and future adapters.
-- `internal/lookupcache/` owns versioned SQLite normalized-result persistence.
+- `internal/bom/` owns deterministic demand aggregation and the eC-BOM CSV
+  export (including the formula-injection guard).
+- `internal/money/` owns exact fixed-point decimal arithmetic.
+- `internal/fx/` owns dated ECB reference quotes and exact currency
+  conversion (one half-to-even rounding, explicit failures).
+- `internal/procurement/` owns normalized offer types and the purchase-plan
+  optimizer.
+- `internal/provider/` owns the provider registry, discovery, health checks,
+  and one adapter package per provider. Every provider is declared once in
+  `registry.go`; its doc comment carries the complete add-a-provider
+  checklist. Keep provider HTTP inside the provider's own adapter package.
+- `internal/sourcing/` owns provider-independent orchestration: the
+  multi-provider resolver, resolution-aware redirection, and safe totals.
+- `internal/lookupcache/` owns versioned SQLite normalized-result
+  persistence, including per-provider adapter versions and context hashes.
 - `internal/resolutions/` owns audited persistence of human-approved
-  resolutions.
+  resolutions. Provider values in stored records may include removed
+  providers; validation must keep accepting them so durable data stays
+  readable.
 - `internal/tui/` owns the interactive terminal mode (Bubble Tea); its
   model layer is a pure state machine and must stay testable without a
   terminal. `interactive` is the only command exempt from the JSON stdout
   protocol and must keep refusing non-TTY stdio.
 - `internal/webui/` owns the local web interface: loopback-only listener,
   per-session bearer token, loopback Host/Origin enforcement, strict CSP,
-  and a hand-written embedded frontend (stdlib only — no npm, no build
+  and a hand-written embedded frontend (stdlib only; no npm, no build
   step, no external requests). Its JSON API is an internal contract with
-  its own frontend, not a public interface; `serve` emits exactly one
+  its own frontend, not a public interface. `serve` emits exactly one
   JSON startup envelope on stdout and then serves until interrupted.
-- `internal/config/` owns non-evaluating `.env` loading.
+- `internal/documents/` owns evidence-link discovery and safe PDF retrieval.
+- `internal/config/` owns non-evaluating `.env` loading, including the
+  restricted-key list that keeps trusted-path overrides out of `.env`.
+- `internal/app/` owns build and version metadata.
 - `schemas/` contains and embeds the versioned public JSON contracts.
 - `examples/` holds runnable example input documents used by the README.
 

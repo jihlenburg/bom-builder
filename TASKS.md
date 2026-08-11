@@ -47,3 +47,13 @@
       package, discovery, health, selection, cache identity, restricted
       env keys, schemas, docs); keep historical values readable in stored
       resolutions and cache listings
+- [x] Add CI (gofmt + full `make check` on every push and pull request)
+      and the eC-BOM CSV formula-injection guard
+- [x] Consume approved resolutions in `lookup`/`price` with narrow
+      SKU-pinned review lifting
+- [x] Add the FX layer: dated ECB quotes and `--currency` converted totals
+- [x] Add the provider registry (single definition point) and
+      `--providers` exclude syntax
+- [x] Polish all documentation: accuracy pass against current behavior,
+      corrected `.env.example` (restricted keys and stale variables),
+      updated `CLAUDE.md` architecture
