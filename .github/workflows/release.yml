@@ -6,9 +6,17 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Dry run: builds and checksums every artifact without publishing a
-  # release, so the pipeline can be verified before the first real tag.
+  # Manual dispatch. Without a tag input this is a dry run that builds
+  # and checksums every artifact without publishing. With a tag input
+  # (for example "v3.0.0") the workflow creates that tag at the
+  # dispatched commit and publishes the release — useful when the
+  # operator's environment cannot push tags directly.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create and release (e.g. v3.0.0); empty = dry run"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -27,10 +35,15 @@ jobs:
         run: make check
 
       - name: build release artifacts
+        env:
+          INPUT_TAG: ${{ inputs.tag || '' }}
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#v}"
-          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ -n "${INPUT_TAG}" ]; then
+            version="${INPUT_TAG#v}"
+          else
             version="0.0.0-dryrun"
           fi
           mkdir -p dist
@@ -58,10 +71,15 @@ jobs:
           ls -l dist
 
       - name: verify a released binary reports its version
+        env:
+          INPUT_TAG: ${{ inputs.tag || '' }}
         run: |
           set -eu
-          version="${GITHUB_REF_NAME#v}"
-          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ -n "${INPUT_TAG}" ]; then
+            version="${INPUT_TAG#v}"
+          else
             version="0.0.0-dryrun"
           fi
           tar -xzf "dist/bom-builder_${version}_linux_amd64.tar.gz" -C /tmp
@@ -75,11 +93,22 @@ jobs:
           path: dist/
 
       - name: publish GitHub release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag || '' }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --title "bom-builder ${GITHUB_REF_NAME}" \
-            --generate-notes \
-            --verify-tag
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "bom-builder ${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --verify-tag
+          else
+            # Dispatched with an explicit tag: create the tag at the
+            # dispatched commit and publish in one step.
+            gh release create "${INPUT_TAG}" dist/* \
+              --title "bom-builder ${INPUT_TAG}" \
+              --generate-notes \
+              --target "${GITHUB_SHA}"
+          fi
