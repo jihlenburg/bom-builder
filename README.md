@@ -7,7 +7,7 @@ local web UI. Every automated result stays honest about what still needs
 engineering review, and human approvals are recorded durably with a full
 audit trail.
 
-Current milestone: `3.0.0-dev`
+Current version: `3.0.0`
 
 ## What works today
 
@@ -37,7 +37,21 @@ Buyer-oriented report files are still on the roadmap (`TODO.md`).
 `bom-builder capabilities --full` is the authoritative way for a coding agent
 to discover what the installed build can do.
 
-## Build
+## Install
+
+Prebuilt binaries for Linux, macOS, and Windows (amd64 and arm64) are
+attached to each [GitHub release](https://github.com/jihlenburg/bom-builder/releases),
+together with a `SHA256SUMS` file. Download the archive for your platform,
+verify the checksum, and put the binary on your `PATH`; it has no runtime
+dependencies.
+
+With a Go toolchain installed, you can also build and install directly:
+
+```bash
+go install github.com/jihlenburg/bom-builder/cmd/bom-builder@latest
+```
+
+## Build from source
 
 BOM Builder uses the Go 1.25 language and module baseline. Reproducible
 development commands pin the latest supported Go 1.25 patch, `go1.25.12`.
@@ -409,6 +423,29 @@ Copy `.env.example` to `.env` and fill in provider credentials. Existing
 process environment variables take precedence, and `.env` parsing never
 evaluates shell syntax.
 
+### Getting provider API keys
+
+Each provider account is yours; BOM Builder only uses the credentials you
+configure, and providers without credentials are simply skipped by
+`--providers auto`.
+
+- Mouser: request a Search API key through the API hub on mouser.com
+  (free registration). `MOUSER_API_KEYS` accepts several keys and rotates
+  through them.
+- Digi-Key: register an organization and a production app at
+  developer.digikey.com with access to the Product Information V4 API.
+  You need the client ID, client secret, and your account ID
+  (`DIGIKEY_ACCOUNT_ID`); set the locale variables to the site, currency,
+  and ship-to country your account actually uses.
+- TI Store: request TI store API access through your myTI account; the
+  key and secret map to `TI_STORE_API_KEY` and `TI_STORE_API_SECRET`.
+- Microchip evidence and ECB currency quotes need no credentials.
+
+Prices and stock depend on your own accounts, locales, and the moment of
+the request, so two users can legitimately see different numbers for the
+same part. Every result envelope reports the market/account context it
+was priced under.
+
 Trusted-path and endpoint overrides (`BOM_BUILDER_CACHE_DB`,
 `BOM_BUILDER_RESOLUTIONS_DB`, `BOM_BUILDER_ECB_URL`, and the per-provider
 `*_URL` overrides) are refused from `.env` and must be exported in the
@@ -418,6 +455,25 @@ authenticated traffic or relocate trusted state.
 Run `./bin/bom-builder help` for concise examples, or
 `./bin/bom-builder capabilities --full` for the authoritative machine-readable
 contract.
+
+## Interface stability
+
+The machine interface is the CLI: its JSON envelopes, the embedded JSON
+Schemas, the stable issue codes, and the process exit codes. The rules:
+
+- `schema_version` (currently `2.0`) changes only for breaking changes to
+  published envelopes or schemas, announced in the release notes.
+- New optional JSON fields may appear in any release without a version
+  bump; consumers must ignore unknown fields.
+- Exit codes and documented issue codes are stable identifiers.
+- The web UI's JSON API is an internal contract with its own embedded
+  frontend and may change at any time; do not build against it.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow and
+ground rules, and [SECURITY.md](./SECURITY.md) for private vulnerability
+reporting.
 
 ## Exit codes
 

@@ -54,3 +54,7 @@
 - [x] Polish all documentation: accuracy pass against current behavior,
       corrected `.env.example` (restricted keys and stale variables),
       updated `CLAUDE.md` architecture
+- [x] Make the project third-party ready: Windows runtime tests in CI,
+      the tag-triggered release workflow (six-platform archives plus
+      SHA256SUMS), install and API-key documentation, interface-stability
+      policy, CONTRIBUTING.md, SECURITY.md, and the v3.0.0 release

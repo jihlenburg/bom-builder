@@ -1,5 +1,32 @@
 # Logbook
 
+## 2026-08-10 (third-party readiness, v3.0.0)
+
+- Prepared the first public release. CI gained a `windows-latest` job that
+  runs `go vet`, the full unit-test suite, and a native build on a real
+  Windows runner — until now Windows was compile-verified only (the
+  cross-build gate catches API breakage but had never executed a test).
+  The race detector stays on the Linux job, where it needs no C toolchain.
+- Added a tag-triggered release workflow: on a `v*` tag it runs the full
+  `make check` gate, cross-builds six platforms (linux, darwin, windows ×
+  amd64, arm64; all verified to compile locally first), packages each
+  binary with LICENSE and README as tar.gz/zip, writes SHA256SUMS,
+  smoke-checks that a built binary reports the tag's version, and
+  publishes a GitHub release with generated notes. A `workflow_dispatch`
+  dry-run mode builds and uploads artifacts without publishing, so the
+  pipeline can be proven before the first real tag.
+- Third-party documentation: README gained Install (release binaries and
+  `go install`), a "Getting provider API keys" walkthrough (Mouser API
+  hub, Digi-Key production app with Product Information V4, TI store API
+  via myTI; a note that prices legitimately differ between accounts and
+  locales), and an "Interface stability" section stating the contract:
+  schema_version bumps only for breaking changes, additive fields
+  anytime, exit and issue codes stable, the web UI API internal. Added
+  CONTRIBUTING.md (build/check workflow, ground rules, GPL
+  inbound=outbound) and SECURITY.md (private reporting, scope).
+- Version: `internal/app` and the build script now default to `3.0.0`;
+  release binaries get the exact tag version via ldflags.
+
 ## 2026-08-10 (documentation polish)
 
 - Full accuracy pass over every document against current behavior. The one

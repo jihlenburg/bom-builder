@@ -1,0 +1,85 @@
+# Copyright (C) 2026 Joern Ihlenburg
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Dry run: builds and checksums every artifact without publishing a
+  # release, so the pipeline can be verified before the first real tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+
+      - name: run the full check gate
+        run: make check
+
+      - name: build release artifacts
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            version="0.0.0-dryrun"
+          fi
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            name="bom-builder_${version}_${goos}_${goarch}"
+            binary="bom-builder"
+            if [ "$goos" = "windows" ]; then
+              binary="bom-builder.exe"
+            fi
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -trimpath \
+              -ldflags "-s -w -X github.com/jihlenburg/bom-builder/internal/app.Version=${version}" \
+              -o "dist/stage/${name}/${binary}" ./cmd/bom-builder
+            cp LICENSE README.md "dist/stage/${name}/"
+            if [ "$goos" = "windows" ]; then
+              (cd "dist/stage" && zip -qr "../${name}.zip" "${name}")
+            else
+              tar -czf "dist/${name}.tar.gz" -C "dist/stage" "${name}"
+            fi
+          done
+          rm -rf dist/stage
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          ls -l dist
+
+      - name: verify a released binary reports its version
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            version="0.0.0-dryrun"
+          fi
+          tar -xzf "dist/bom-builder_${version}_linux_amd64.tar.gz" -C /tmp
+          reported="$(/tmp/bom-builder_${version}_linux_amd64/bom-builder --version)"
+          echo "$reported"
+          [ "$reported" = "bom-builder ${version}" ]
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+
+      - name: publish GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "bom-builder ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

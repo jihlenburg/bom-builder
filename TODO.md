@@ -28,7 +28,10 @@ completed work is recorded in `TASKS.md` and `LOGBOOK.md`.
 - [ ] Distinguish authentication, quota, rate-limit, provider, unresolved,
       review-required, deadline, and internal failures with stable codes
 - [ ] Add optional NDJSON progress and structured stderr logging
-- [ ] Add schema compatibility and deprecation policy
+- [ ] Complete the schema compatibility and deprecation policy; the
+      stability rules are documented in the README (schema_version bumps
+      only for breaking changes, additive fields anytime, stable exit and
+      issue codes), while automated compatibility checks in CI remain
 
 ## Interactive mode
 
@@ -241,15 +244,14 @@ completed work is recorded in `TASKS.md` and `LOGBOOK.md`.
 - [ ] Add subprocess contract tests, golden JSON tests, and schema validation
 - [ ] Add redaction, cancellation, concurrency, and mocked provider-health tests
 - [ ] Add benchmark fixtures for small, medium, and production-sized BOMs
-- [ ] Complete CI; a GitHub Actions workflow now runs gofmt and the full
-      `make check` gate (tests, race detector, vet, the windows/amd64
-      cross-build, native build) on every push and pull request, while
-      static analysis, schema-compatibility checks, and release builds
-      remain
-- [ ] Cross-compile release binaries for macOS, Linux, and Windows
-      (the `windows/amd64` build+vet gate already runs in `make check`;
-      release packaging remains)
-- [ ] Add checksums, SBOMs, signing, and macOS notarization
+- [ ] Complete CI; gofmt plus the full `make check` gate run on every
+      push and pull request, the unit suite runs on a real Windows runner,
+      and tagged releases build multi-platform archives with checksums,
+      while static analysis and schema-compatibility checks remain
+- [x] Cross-compile release binaries for macOS, Linux, and Windows
+      (amd64 and arm64) with SHA256SUMS, published by the tag-triggered
+      release workflow
+- [ ] Add SBOMs, signing, and macOS notarization to releases
 - [ ] Add shell completions and Claude/Codex/shell/CI automation guides
 
 ## Code review remediation (2026-07-31)
