@@ -4,7 +4,7 @@ set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 project_dir=$(CDPATH='' cd -- "$script_dir/.." && pwd)
-version=${BOM_BUILDER_VERSION:-3.0.1}
+version=${BOM_BUILDER_VERSION:-3.1.0-dev}
 output=${BOM_BUILDER_OUTPUT:-"$project_dir/bin/bom-builder"}
 go_toolchain=${BOM_BUILDER_GO_TOOLCHAIN:-go1.25.12}
 

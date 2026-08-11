@@ -34,6 +34,17 @@
   profile directory's ACLs); the test now skips on Windows with that
   reasoning recorded.
 
+## 2026-08-11 (v3.0.1 released)
+
+- v3.0.1 published at `4b8a9dd`: identical code to v3.0.0 plus the
+  README verification-story update, so the bundled documentation
+  describes the shipped state. Released via workflow dispatch (the tag
+  created server-side, as established for v3.0.0), externally verified:
+  checksum OK, binary reports 3.0.1, bundled README carries the update.
+  v3.0.0 remains published and immutable — moving a released Go module
+  tag would break checksums for anyone who fetched it. Development
+  continues as 3.1.0-dev.
+
 ## 2026-08-11 (v3.0.0 released)
 
 - v3.0.0 is published: tag at `8a1b939` on main, GitHub release with six
