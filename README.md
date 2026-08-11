@@ -7,7 +7,7 @@ local web UI. Every automated result stays honest about what still needs
 engineering review, and human approvals are recorded durably with a full
 audit trail.
 
-Latest release: `v3.0.0`
+Latest release: `v3.0.1`
 
 ## What works today
 
