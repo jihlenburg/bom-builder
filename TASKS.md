@@ -1,9 +1,9 @@
 # Tasks
 
-## Current Go Rewrite Cycle
+## Development record
 
 - [x] Establish a clean Go module at repository root
-- [x] Pin the rewrite to Go 1.25.12 and current compatible dependencies
+- [x] Pin the toolchain to Go 1.25.12 and current compatible dependencies
 - [x] Add typed public contracts and stable exit codes
 - [x] Add safe `.env` loading without shell evaluation
 - [x] Add `capabilities --full`, provider discovery, and schema commands
@@ -11,15 +11,13 @@
 - [x] Add a reproducible native build helper
 - [x] Add unit and command-contract tests
 - [x] Port the money model using exact fixed-point decimal arithmetic
-- [x] Port the purchase-plan optimizer and legacy behavioral cases
+- [x] Port the purchase-plan optimizer and its behavioral test cases
 - [ ] Add serialized cross-language optimizer golden fixtures
 - [x] Implement and live-verify the Mouser adapter
 - [x] Add native `lookup`, `price`, and `providers check` commands
 - [x] Implement and live-verify the Digi-Key adapter
 - [x] Compare safe Mouser and Digi-Key plans with per-provider provenance
 - [x] Implement and live-verify the pure-Go TI Store adapter
-- [x] Implement and live-verify the browser-backed native Go NXP adapter
-      (later removed 2026-08-10 as a dead end; preserved in Git history)
 - [x] Add safe datasheet discovery and verified PDF downloads
 - [x] Add stock-aware resistor, capacitor, and inductor alternative evaluation
 - [x] Add the versioned native SQLite lookup cache and safe management commands
@@ -28,7 +26,6 @@
       selected plan)
 - [x] Declare GPL-3.0-or-later: document the license in `README.md` and carry
       the SPDX identifier in every Go source file
-- [x] Retire the archived Python implementation and its `legacy/` tree
 - [x] Add the concurrent-safe, audited approved-resolution store and the
       `resolutions approve|list|history|revoke` commands
 - [x] Make Windows a verified compilation target: `windows/amd64` cross-build

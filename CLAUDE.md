@@ -3,9 +3,8 @@
 ## Project
 
 BOM Builder is a native Go CLI for electronic BOM sourcing, pricing, provider
-health, and stock-aware substitution analysis. The Go implementation is the
-only implementation; the archived Python predecessor has been removed and lives
-on only in Git history.
+health, and stock-aware substitution analysis, with an interactive terminal
+mode and a local web UI over the same engine.
 
 ## Current architecture
 
@@ -57,8 +56,8 @@ on only in Git history.
   commands. Send diagnostics to stderr.
 - Use Go standard library packages where they are a good fit. Add dependencies
   deliberately and document why they are needed.
-- Use integer minor currency units or a decimal type for money; do not use
-  binary floating point in the new pricing core.
+- Use integer minor currency units or a decimal type for money; never use
+  binary floating point in the pricing core.
 - Treat insufficient stock, failed currency normalization, unknown critical
   compatibility fields, and loose part-number matches as explicit states.
 - An AI result may rank evidence but may never independently clear engineering
@@ -87,5 +86,4 @@ make check
 `make check` pins Go 1.25.12 and runs unit tests, race tests, vet, the
 `windows/amd64` cross-compilation and vet gate, and the native build. Windows
 is a supported target: keep new code portable (use `filepath`, no POSIX-only
-process tricks outside explicitly gated adapters). Use `gofmt` on every
-changed Go file.
+process tricks). Use `gofmt` on every changed Go file.

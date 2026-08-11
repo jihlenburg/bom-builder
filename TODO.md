@@ -1,9 +1,9 @@
-# Go Rewrite Roadmap
+# Roadmap
 
-The Go implementation intentionally starts with a small, truthful capability
-surface. Commands are advertised only after their contracts and tests exist.
-This list carries forward every unfinished CLI, substitution, document, safety,
-and quality item from the Python roadmap.
+BOM Builder keeps a small, truthful capability surface: commands are
+advertised only after their contracts and tests exist. Checked entries stay
+where they describe the current behavior of a partially finished area;
+completed work is recorded in `TASKS.md` and `LOGBOOK.md`.
 
 ## CLI and machine interface
 
@@ -38,13 +38,12 @@ and quality item from the Python roadmap.
       non-TTY refusal (`INTERACTIVE_TTY_REQUIRED`) and a terminal-free
       model test suite
 - [ ] Interactive live pricing runs: stream `price`-style sourcing progress
-      into the interface (the archived Python TUI's parts table, cost
-      panel, and status bar)
+      into the interface (a live parts table, cost panel, and status bar)
 - [x] Interactive resolver flow: source one part from inside the interface,
       present every normalized candidate (match method, stock, price,
-      review status), and seed the approve form with the chosen candidate —
-      the successor of the Python resolver modal. The approver is never
-      prefilled; choosing a candidate cannot clear engineering review
+      review status), and seed the approve form with the chosen candidate.
+      The approver is never prefilled; choosing a candidate cannot clear
+      engineering review
 - [x] Local web UI parallel to the TUI: `bom-builder serve` — loopback-only
       listener, per-session bearer token, Host/Origin enforcement, strict
       CSP, embedded no-build-step frontend, resolutions manager plus the
@@ -62,12 +61,9 @@ and quality item from the Python roadmap.
       dated ECB conversion of summary totals (`--currency`) are
       implemented, while FX-aware cross-provider plan COMPARISON (choosing
       the cheapest offer across currencies) remains
-- [ ] Complete optimizer verification; the native purchase-plan optimizer and
-      the Python-era behavioral cases are ported, while serialized
-      cross-language golden fixtures remain. The `legacy/` tree has been
-      removed, so generating fresh cross-language fixtures now requires
-      checking the Python implementation out of Git history
-      (`git show 9f54a22:legacy/optimizer.py`)
+- [ ] Add independently authored golden fixtures for the purchase-plan
+      optimizer (worked examples computed by hand or by another tool) to
+      guard price-break selection and composite plans against regressions
 - [x] Define canonical ordering for aggregated parts and Mouser price breaks
 - [x] SQLite normalized-response cache with migrations, WAL, expiry, checksums,
       adapter/context identity, and source-request provenance
@@ -122,16 +118,12 @@ and quality item from the Python roadmap.
       document links
 - [x] TI OAuth/store pricing without exposing secrets to process arguments or
       requiring an external `curl` executable
-- [x] NXP direct sourcing through a documented browser/CDP boundary
-      (REMOVED 2026-08-10: the store adapter was retired as a dead end —
-      see LOGBOOK; the code lives on in Git history)
-- [ ] EVALUATED AND NOT PURSUED (2026-07-30): a `microchipdirect` provider
-      on the NXP headless-CDP pattern. Feasibility spike failed decisively:
+- [ ] EVALUATED AND NOT PURSUED (2026-07-30): a browser-automation
+      `microchipdirect` provider. The feasibility spike failed decisively:
       microchipdirect.com resets plain TLS clients at connection level
       (curl: code 000 in 0.06s), microchip.com edge-403s them, and
       headless Chrome (`--headless=new --dump-dom`) receives an error page
-      instead of the site — Akamai-class bot management, unlike NXP's
-      store which tolerates a private headless session. Building this
+      instead of the site (Akamai-class bot management). Building this
       would mean maintaining bot-management evasion, which is out of
       scope for this tool. Use instead: an interactive browser session
       for one-off checks, or Eurocircuits' upload-time sourcing (Microchip
@@ -276,18 +268,10 @@ history (`git show 1647847:CODE_REVIEW_2026-07-31.md`).
       `String()`; adversarial money test suite
 - [x] Input schema describes all three accepted document shapes; loader
       rejects empty array/wrapper documents per document
-- [x] NXP: string prices reach `money.Parse` verbatim (EU comma-decimal
-      1000x fix); integer fields keep US-grouping tolerance
-- [x] NXP: accept "NXP USA Inc.", "N.V.", "B.V." manufacturer spellings
 - [x] Mouser: loose-match squash no longer masks shortage/stock_unknown/
       unavailable states
 - [x] Cache: `Put` round-trips through `decodeRow`, refusing entries the
       read path would reject (self-poisoning footgun)
-- [x] NXP failure model: transient errors fail one lookup only; schema drift
-      still disables for the run; dead browser processes are dropped and
-      relaunched; body fetch waits for `Network.loadingFinished`; operations
-      serialized under an operation mutex (CDP single-consumer documented);
-      scripted fake-browser test harness added
 - [x] `.env` trust model: endpoint/browser/cache-path keys must come from the
       process environment (refused when a `.env` would introduce them);
       malformed `.env` now exits 2 under the invoked command; lowercase keys
