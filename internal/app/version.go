@@ -6,4 +6,4 @@ package app
 
 // Version is the semantic version reported by the executable. Release builds
 // may override it with -ldflags "-X github.com/jihlenburg/bom-builder/internal/app.Version=...".
-var Version = "3.0.0"
+var Version = "3.1.0-dev"

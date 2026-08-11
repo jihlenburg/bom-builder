@@ -34,6 +34,24 @@
   profile directory's ACLs); the test now skips on Windows with that
   reasoning recorded.
 
+## 2026-08-11 (v3.0.0 released)
+
+- v3.0.0 is published: tag at `8a1b939` on main, GitHub release with six
+  platform archives (linux/darwin/windows x amd64/arm64) plus SHA256SUMS,
+  built by the release workflow after a full `make check` on the runner.
+  Verified from the outside like a third party: downloaded the
+  linux/amd64 archive, checked its SHA256 against the published sums,
+  ran the binary (`bom-builder 3.0.0`), and queried capabilities.
+- Two environment quirks discovered and worked around, recorded here for
+  the next release: this development environment's git proxy silently
+  drops tag pushes (git reports "Everything up-to-date" while the remote
+  never receives the tag), so the release workflow accepts a tag input on
+  manual dispatch and creates the tag server-side via
+  `gh release create --target`; and unauthenticated GitHub API polling
+  through the shared proxy hits rate limits, so run-status checks go
+  through the authenticated tooling.
+- Development continues as 3.1.0-dev.
+
 ## 2026-08-10 (documentation polish)
 
 - Full accuracy pass over every document against current behavior. The one
