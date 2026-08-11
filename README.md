@@ -12,7 +12,7 @@ Latest release: `v3.0.0`
 ## What works today
 
 - Single self-contained executable; no runtime or interpreter required, and
-  Windows cross-compilation is verified in the check pipeline
+  the full test suite runs on Linux and Windows in CI
 - Machine-readable capability and schema discovery; stable JSON stdout and
   process exit codes
 - Live Mouser, Digi-Key, and TI Store sourcing: lookup, quantity pricing,
@@ -79,9 +79,15 @@ deliberately testing another compiler.
 The resulting executable does not require a Go installation, an interpreter, or
 any other runtime on the target machine.
 
-Windows is a supported compilation target: `make check` cross-compiles and
-vets every package for `windows/amd64` (`make windows` runs that gate alone).
-The pure-Go SQLite driver works unchanged on Windows.
+Windows is a supported target, verified twice over: `make check`
+cross-compiles and vets every package for `windows/amd64` (`make windows`
+runs that gate alone), and CI additionally runs the full unit-test suite
+and a native build on a real Windows runner for every push. Release
+archives include Windows binaries for amd64 and arm64.
+
+Continuous integration runs gofmt and the complete `make check` gate on
+every push and pull request; tagged releases are built and published by a
+separate workflow after passing the same gate.
 
 ## Agent discovery
 
@@ -509,6 +515,7 @@ internal/app/          build and version metadata
 examples/              runnable example input documents
 schemas/               public JSON Schemas and embedded access
 scripts/               reproducible build helpers
+.github/workflows/     CI (tests on Linux and Windows) and releases
 ```
 
 ## License
