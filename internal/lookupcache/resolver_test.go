@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -312,6 +313,13 @@ func TestStoreRejectsSymlinkSQLiteSidecar(t *testing.T) {
 }
 
 func TestStoreUsesOwnerOnlyPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows does not carry POSIX permission bits: Go emulates the
+		// mode (0666/0444) and Chmod affects only the read-only flag, so
+		// this assertion is meaningless there. Access control on Windows
+		// comes from the profile directory's ACLs.
+		t.Skip("POSIX permission bits are not representable on Windows")
+	}
 	path := filepath.Join(t.TempDir(), "cache.sqlite3")
 	store, err := Open(path)
 	if err != nil {

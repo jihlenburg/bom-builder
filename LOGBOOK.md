@@ -26,6 +26,13 @@
   inbound=outbound) and SECURITY.md (private reporting, scope).
 - Version: `internal/app` and the build script now default to `3.0.0`;
   release binaries get the exact tag version via ldflags.
+- The Windows job earned its keep on its first run: every package passed
+  on the real runner except one test asserting POSIX permission bits —
+  Go emulates modes on Windows (0666/0444; Chmod flips only read-only),
+  so `TestStoreUsesOwnerOnlyPermissions` reported 666. The production
+  code is correct (best-effort chmod; Windows access control is the
+  profile directory's ACLs); the test now skips on Windows with that
+  reasoning recorded.
 
 ## 2026-08-10 (documentation polish)
 
