@@ -411,6 +411,42 @@ func manufacturersMatch(input, candidate string) bool {
 	return false
 }
 
+// foldDiacritics maps common Latin letters with diacritics to their
+// ASCII base form. Distributor catalogs index manufacturers in ASCII
+// ("Wurth Elektronik"), so a correctly spelled BOM ("Würth Elektronik")
+// must still match. On 2026-08-05 the umlaut form returned "0 matching
+// manufacturers" from Mouser and a stocked part read as a false shortage.
+func foldDiacritics(text string) string {
+	fold := map[rune]string{
+		'ä': "a", 'ö': "o", 'ü': "u", 'Ä': "A", 'Ö': "O", 'Ü': "U",
+		'ß': "ss",
+		'à': "a", 'á': "a", 'â': "a", 'ã': "a", 'å': "a",
+		'À': "A", 'Á': "A", 'Â': "A", 'Ã': "A", 'Å': "A",
+		'è': "e", 'é': "e", 'ê': "e", 'ë': "e",
+		'È': "E", 'É': "E", 'Ê': "E", 'Ë': "E",
+		'ì': "i", 'í': "i", 'î': "i", 'ï': "i",
+		'Ì': "I", 'Í': "I", 'Î': "I", 'Ï': "I",
+		'ò': "o", 'ó': "o", 'ô': "o", 'õ': "o", 'ø': "o",
+		'Ò': "O", 'Ó': "O", 'Ô': "O", 'Õ': "O", 'Ø': "O",
+		'ù': "u", 'ú': "u", 'û': "u",
+		'Ù': "U", 'Ú': "U", 'Û': "U",
+		'ñ': "n", 'Ñ': "N", 'ç': "c", 'Ç': "C",
+		'ý': "y", 'Ý': "Y", 'æ': "ae", 'Æ': "AE",
+		'š': "s", 'Š': "S", 'ž': "z", 'Ž': "Z",
+		'č': "c", 'Č': "C", 'ć': "c", 'Ć': "C",
+		'ł': "l", 'Ł': "L", 'đ': "d", 'Đ': "D",
+	}
+	var out strings.Builder
+	for _, character := range text {
+		if replacement, exists := fold[character]; exists {
+			out.WriteString(replacement)
+			continue
+		}
+		out.WriteRune(character)
+	}
+	return out.String()
+}
+
 func canonicalManufacturer(manufacturer string) string {
 	var words []string
 	var current strings.Builder
@@ -423,12 +459,12 @@ func canonicalManufacturer(manufacturer string) string {
 		switch word {
 		case "inc", "incorporated", "corp", "corporation", "company", "co",
 			"ltd", "limited", "technologies", "technology", "semiconductor",
-			"semiconductors", "electronics", "electronic":
+			"semiconductors", "electronics", "electronic", "elektronik":
 			return
 		}
 		words = append(words, word)
 	}
-	for _, character := range strings.ToLower(manufacturer) {
+	for _, character := range strings.ToLower(foldDiacritics(manufacturer)) {
 		if unicode.IsLetter(character) || unicode.IsDigit(character) {
 			current.WriteRune(character)
 		} else {
@@ -446,7 +482,6 @@ func canonicalManufacturer(manufacturer string) string {
 		"adi":                    "analog devices",
 		"maxim integrated":       "analog devices",
 		"st":                     "stmicroelectronics",
-		"wurth":                  "würth",
 		"yageo":                  "yageo",
 		"vishay general":         "vishay",
 		"vishay intertechnology": "vishay",
@@ -475,7 +510,9 @@ func mouserManufacturerName(manufacturer string) string {
 	if name, exists := names[canonical]; exists {
 		return name
 	}
-	return strings.TrimSpace(manufacturer)
+	// Fall back to the caller's spelling with diacritics folded: the
+	// Mouser catalog indexes manufacturers in ASCII.
+	return strings.TrimSpace(foldDiacritics(manufacturer))
 }
 
 func isNonComponent(part Part) bool {

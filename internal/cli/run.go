@@ -630,7 +630,10 @@ func executePricing(
 		})
 	}
 	var resolver sourcing.Resolver
-	multi, err := sourcing.NewMultiResolver(bindings)
+	// The same dated quotes that convert totals also decide which offer
+	// wins: without them a cheaper plan in another currency could not be
+	// compared at all.
+	multi, err := sourcing.NewMultiResolverWithFX(bindings, conversion)
 	if err != nil {
 		return emitError(stdout, command, "INTERNAL_ERROR", err.Error(), contract.ExitInternal, pretty)
 	}

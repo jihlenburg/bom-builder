@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jihlenburg/bom-builder/internal/fx"
 	"github.com/jihlenburg/bom-builder/internal/money"
 	"github.com/jihlenburg/bom-builder/internal/procurement"
 )
@@ -111,6 +112,145 @@ func TestMultiResolverRefusesCrossCurrencyComparison(t *testing.T) {
 		result.Offer != nil {
 		t.Fatalf("mixed currencies were compared: %#v", result)
 	}
+}
+
+func TestMultiResolverConvertsPlansBeforeComparing(t *testing.T) {
+	t.Parallel()
+	// With dated quotes the cheapest plan is decided on converted value,
+	// not on the raw number: 8.50 USD at 1.10 USD per EUR is 7.727272 EUR
+	// and beats 8.00 EUR, which a currency-blind numeric comparison would
+	// have picked instead.
+	demand := procurement.Demand{PartNumber: "A", RequiredQuantity: 100}
+	resolver, err := NewMultiResolverWithFX(
+		[]ProviderResolver{
+			{
+				Name: "mouser",
+				Resolver: fixedResolver{
+					part: pricedProviderPart(t, demand, "mouser", "8.00", "EUR"),
+				},
+			},
+			{
+				Name: "digikey",
+				Resolver: fixedResolver{
+					part: pricedProviderPart(t, demand, "digikey", "8.50", "USD"),
+				},
+			},
+		},
+		&CurrencyConversion{Target: "EUR", Table: testQuoteTable(t)},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := resolver.Lookup(context.Background(), demand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "priced" || result.Offer == nil ||
+		result.Offer.Provider != "digikey" {
+		t.Fatalf("conversion did not decide the comparison: %#v", result)
+	}
+	// Conversion decides the ranking only. The selected plan keeps the
+	// currency the provider actually charges in, so the order stays
+	// payable as quoted.
+	if result.Offer.SelectedPlan.Currency != "USD" ||
+		result.Offer.SelectedPlan.ExtendedPrice.String() != "8.500000" {
+		t.Fatalf("selected plan was rewritten: %#v", result.Offer.SelectedPlan)
+	}
+	for _, offer := range result.Offers {
+		if offer.Provider == "mouser" && offer.SelectedPlan != nil {
+			t.Fatal("losing provider retained selected plan")
+		}
+	}
+}
+
+func TestMultiResolverFailsExplicitlyWhenAPlanCurrencyIsNotQuoted(t *testing.T) {
+	t.Parallel()
+	// An unconvertible plan cannot be proven more expensive than the
+	// others, so comparing the remainder could select a worse plan. Fail
+	// closed instead, the same way converted totals do.
+	demand := procurement.Demand{PartNumber: "A", RequiredQuantity: 100}
+	resolver, _ := NewMultiResolverWithFX(
+		[]ProviderResolver{
+			{
+				Name: "mouser",
+				Resolver: fixedResolver{
+					part: pricedProviderPart(t, demand, "mouser", "8.00", "EUR"),
+				},
+			},
+			{
+				Name: "farnell",
+				Resolver: fixedResolver{
+					part: pricedProviderPart(t, demand, "farnell", "7.00", "GBP"),
+				},
+			},
+		},
+		&CurrencyConversion{Target: "EUR", Table: testQuoteTable(t)},
+	)
+	result, err := resolver.Lookup(context.Background(), demand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "unavailable" ||
+		result.IssueCode != "FX_CONVERSION_FAILED" ||
+		result.Offer != nil {
+		t.Fatalf("unquoted currency was compared anyway: %#v", result)
+	}
+	for _, offer := range result.Offers {
+		if offer.SelectedPlan != nil {
+			t.Fatalf("failed comparison left a selected plan: %#v", offer)
+		}
+	}
+}
+
+func TestMultiResolverComparesOneCurrencyWithoutQuotes(t *testing.T) {
+	t.Parallel()
+	// Plans that already share a currency need no quote at all, even
+	// when a conversion is configured and the table cannot price that
+	// currency. Requiring a quote here would fail lines that never
+	// needed converting.
+	demand := procurement.Demand{PartNumber: "A", RequiredQuantity: 100}
+	resolver, _ := NewMultiResolverWithFX(
+		[]ProviderResolver{
+			{
+				Name: "mouser",
+				Resolver: fixedResolver{
+					part: pricedProviderPart(t, demand, "mouser", "9.00", "GBP"),
+				},
+			},
+			{
+				Name: "farnell",
+				Resolver: fixedResolver{
+					part: pricedProviderPart(t, demand, "farnell", "7.00", "GBP"),
+				},
+			},
+		},
+		&CurrencyConversion{Target: "EUR", Table: testQuoteTable(t)},
+	)
+	result, err := resolver.Lookup(context.Background(), demand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "priced" || result.Offer == nil ||
+		result.Offer.Provider != "farnell" {
+		t.Fatalf("same-currency comparison required a quote: %#v", result)
+	}
+}
+
+// testQuoteTable is a dated EUR-based table quoting only USD, so tests
+// can exercise both a convertible and an unquoted currency.
+func testQuoteTable(t *testing.T) fx.Table {
+	t.Helper()
+	rate, err := money.Parse("1.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := fx.NewTable("ecb", "2026-08-13", "EUR", map[string]money.Decimal{
+		"USD": rate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return table
 }
 
 func TestMultiResolverKeepsHealthyProviderWhenAnotherDegrades(t *testing.T) {

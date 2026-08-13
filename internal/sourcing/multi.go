@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jihlenburg/bom-builder/internal/money"
 	"github.com/jihlenburg/bom-builder/internal/procurement"
 )
 
@@ -20,11 +21,25 @@ type ProviderResolver struct {
 
 // MultiResolver compares normalized safe plans from independently configured providers.
 type MultiResolver struct {
-	providers []ProviderResolver
+	providers  []ProviderResolver
+	conversion *CurrencyConversion
 }
 
 // NewMultiResolver validates and constructs a multi-provider resolver.
+// Without quotes, plans in different currencies are never compared.
 func NewMultiResolver(providers []ProviderResolver) (*MultiResolver, error) {
+	return NewMultiResolverWithFX(providers, nil)
+}
+
+// NewMultiResolverWithFX behaves like NewMultiResolver; with a conversion
+// it ranks plans by their value in the target currency, so the cheapest
+// offer can win even when providers quote different currencies. The
+// conversion decides ranking only: a selected plan keeps the currency
+// the provider charges in.
+func NewMultiResolverWithFX(
+	providers []ProviderResolver,
+	conversion *CurrencyConversion,
+) (*MultiResolver, error) {
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("at least one provider resolver is required")
 	}
@@ -43,7 +58,7 @@ func NewMultiResolver(providers []ProviderResolver) (*MultiResolver, error) {
 			Name: name, Resolver: provider.Resolver,
 		})
 	}
-	return &MultiResolver{providers: validated}, nil
+	return &MultiResolver{providers: validated, conversion: conversion}, nil
 }
 
 // Lookup queries selected providers and chooses only comparable safe plans.
@@ -111,27 +126,25 @@ func (resolver *MultiResolver) Lookup(
 	}
 
 	if len(safeOffers) > 0 {
-		currency := safeOffers[0].SelectedPlan.Currency
-		for _, offer := range safeOffers[1:] {
-			if !strings.EqualFold(currency, offer.SelectedPlan.Currency) {
-				clearSelectedPlans(output.Offers)
-				output.Status = "unavailable"
-				output.IssueCode = "CURRENCY_CONVERSION_REQUIRED"
-				output.IssueMessage = "safe provider plans use different currencies and cannot be compared"
-				return output, nil
-			}
+		ranked, rankErr := resolver.comparablePlans(safeOffers)
+		if rankErr != nil {
+			clearSelectedPlans(output.Offers)
+			output.Status = "unavailable"
+			output.IssueCode = rankErr.code
+			output.IssueMessage = rankErr.message
+			return output, nil
 		}
-		sort.SliceStable(safeOffers, func(left, right int) bool {
-			a, b := safeOffers[left].SelectedPlan, safeOffers[right].SelectedPlan
-			if a.ExtendedPrice != b.ExtendedPrice {
-				return a.ExtendedPrice < b.ExtendedPrice
+		sort.SliceStable(ranked, func(left, right int) bool {
+			a, b := ranked[left], ranked[right]
+			if a.price != b.price {
+				return a.price < b.price
 			}
-			if a.SurplusQuantity != b.SurplusQuantity {
-				return a.SurplusQuantity < b.SurplusQuantity
+			if a.offer.SelectedPlan.SurplusQuantity != b.offer.SelectedPlan.SurplusQuantity {
+				return a.offer.SelectedPlan.SurplusQuantity < b.offer.SelectedPlan.SurplusQuantity
 			}
-			return safeOffers[left].Provider < safeOffers[right].Provider
+			return a.offer.Provider < b.offer.Provider
 		})
-		selected := safeOffers[0]
+		selected := ranked[0].offer
 		clearSelectedPlans(output.Offers)
 		for index := range output.Offers {
 			if output.Offers[index].Provider == selected.Provider &&
@@ -186,6 +199,71 @@ func (resolver *MultiResolver) Lookup(
 	output.IssueCode = "PART_NOT_FOUND"
 	output.IssueMessage = "selected providers returned no candidate"
 	return output, nil
+}
+
+// rankedOffer pairs one safe offer with the value used to rank it. The
+// price is expressed in a single comparison currency, which is the
+// shared plan currency when every plan agrees and the conversion target
+// otherwise.
+type rankedOffer struct {
+	offer procurement.Offer
+	price money.Decimal
+}
+
+// rankingError is a fail-closed reason for refusing to compare plans,
+// carrying the stable issue code the line reports.
+type rankingError struct {
+	code    string
+	message string
+}
+
+// comparablePlans expresses every safe plan in one currency. Plans that
+// already share a currency are compared as they are, so a line that
+// never needed converting cannot fail for want of a quote.
+func (resolver *MultiResolver) comparablePlans(
+	safeOffers []procurement.Offer,
+) ([]rankedOffer, *rankingError) {
+	ranked := make([]rankedOffer, 0, len(safeOffers))
+	currency := safeOffers[0].SelectedPlan.Currency
+	mixed := false
+	for _, offer := range safeOffers[1:] {
+		if !strings.EqualFold(currency, offer.SelectedPlan.Currency) {
+			mixed = true
+			break
+		}
+	}
+	if !mixed {
+		for _, offer := range safeOffers {
+			ranked = append(ranked, rankedOffer{
+				offer: offer, price: offer.SelectedPlan.ExtendedPrice,
+			})
+		}
+		return ranked, nil
+	}
+	if resolver.conversion == nil {
+		return nil, &rankingError{
+			code:    "CURRENCY_CONVERSION_REQUIRED",
+			message: "safe provider plans use different currencies and cannot be compared",
+		}
+	}
+	for _, offer := range safeOffers {
+		converted, err := resolver.conversion.Table.Convert(
+			offer.SelectedPlan.ExtendedPrice,
+			offer.SelectedPlan.Currency,
+			resolver.conversion.Target,
+		)
+		if err != nil {
+			// One unconvertible plan poisons the comparison: it cannot
+			// be ruled out as the cheapest, so selecting among the rest
+			// could quietly pick a worse plan.
+			return nil, &rankingError{
+				code:    "FX_CONVERSION_FAILED",
+				message: err.Error(),
+			}
+		}
+		ranked = append(ranked, rankedOffer{offer: offer, price: converted})
+	}
+	return ranked, nil
 }
 
 func clearSelectedPlans(offers []procurement.Offer) {
