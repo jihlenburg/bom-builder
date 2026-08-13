@@ -96,6 +96,8 @@ func AdapterVersion(provider string) string {
 		return "ti-normalized-v1"
 	case "microchip":
 		return "microchip-normalized-v1"
+	case "farnell":
+		return "farnell-normalized-v1"
 	default:
 		return "unknown-normalized-v1"
 	}
@@ -125,6 +127,13 @@ func ProviderContextHash(provider string) string {
 		// adapter — so changing that unrelated variable re-keyed
 		// microchip cache entries.)
 		values["products_url"] = envValue("BOM_BUILDER_MICROCHIP_PRODUCTS_URL")
+	case "farnell":
+		// The store decides both the catalog view and the implied price
+		// currency, so entries from one store must never satisfy a
+		// lookup against another.
+		values["api_url"] = envValue("BOM_BUILDER_FARNELL_API_URL")
+		values["store"] = strings.ToLower(envDefault("FARNELL_STORE_ID", "de.farnell.com"))
+		values["currency"] = strings.ToUpper(envValue("FARNELL_PRICE_CURRENCY"))
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {

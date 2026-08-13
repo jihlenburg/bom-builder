@@ -102,6 +102,9 @@ func isDistributorHost(value string) bool {
 	for _, suffix := range []string{
 		"digikey.com",
 		"mouser.com",
+		"farnell.com",
+		"element14.com",
+		"newark.com",
 	} {
 		if host == suffix || strings.HasSuffix(host, "."+suffix) {
 			return true

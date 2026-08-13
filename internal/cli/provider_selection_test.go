@@ -51,13 +51,13 @@ func TestProviderSelectionExplicitAndExcludeSyntax(t *testing.T) {
 		{
 			name:     "cache-only automatic set needs no credentials",
 			policy:   lookupcache.PolicyOnly,
-			expected: "[mouser digikey ti]",
+			expected: "[mouser digikey ti farnell]",
 		},
 		{
 			name:  "cache-only with exclusion",
 			value: "-digikey", configured: true,
 			policy:   lookupcache.PolicyOnly,
-			expected: "[mouser ti]",
+			expected: "[mouser ti farnell]",
 		},
 		{
 			name:  "exclusions with explicit names are rejected",
@@ -71,7 +71,7 @@ func TestProviderSelectionExplicitAndExcludeSyntax(t *testing.T) {
 		},
 		{
 			name:  "unknown provider is rejected",
-			value: "farnell", configured: true,
+			value: "octopart", configured: true,
 			wantErr: "no native pricing adapter",
 		},
 		{

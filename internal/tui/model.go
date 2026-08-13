@@ -50,7 +50,7 @@ var approveFieldLabels = [approveFieldCount]string{
 	"Original part number",
 	"Replacement manufacturer",
 	"Replacement part number",
-	"Provider (optional: mouser|digikey|ti|microchip)",
+	"Provider (optional: mouser|digikey|ti|farnell|microchip)",
 	"Provider SKU (optional)",
 	"Approved by (person clearing engineering review)",
 	"Note (optional)",

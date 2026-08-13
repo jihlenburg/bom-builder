@@ -150,11 +150,23 @@ completed work is recorded in `TASKS.md` and `LOGBOOK.md`.
       gentle request budget (no documented rate limits — assume small).
       The credentialed Purchasing API (business account, adds
       pricing/ordering) remains the later upgrade path if needed.
-- [ ] Optional breadth: evaluate a Nexar (Octopart) aggregator provider —
-      one credentialed GraphQL API adding Farnell/RS/TME coverage (all
-      Eurocircuits preferred suppliers bom-builder lacks); check seller
-      coverage for manufacturer-direct stores and commercial API terms
-      before committing.
+- [x] `farnell` distributor adapter via the element14 Product Search API,
+      implemented 2026-08-13 (see LOGBOOK): one credentialed REST endpoint
+      serving the Farnell, Newark, and element14 storefronts. The
+      configured store implies the price currency (`FARNELL_STORE_ID`
+      default `de.farnell.com`, EUR) through a fail-closed table with a
+      `FARNELL_PRICE_CURRENCY` override; prices stay exact decimal text
+      from the wire into `money.Parse`; exact `manuPartNum:` search first,
+      review-gated `any:` keyword fallback; joins `--providers auto`.
+- [ ] Live-verify the Farnell adapter once the element14 partner portal
+      activates the API key. `providers check --providers farnell --live`
+      currently reports Account Inactive (ERR_403_DEVELOPER_INACTIVE);
+      the adapter surfaces that gateway detail in the health output.
+- [ ] Optional breadth: evaluate a Nexar (Octopart) aggregator provider,
+      one credentialed GraphQL API adding RS/TME coverage (the remaining
+      Eurocircuits preferred suppliers bom-builder lacks now that Farnell
+      is native); check seller coverage for manufacturer-direct stores
+      and commercial API terms before committing.
 - [x] ECB dated FX quotes with explicit failure propagation (`internal/fx`:
       credential-free daily reference rates, exact micro-unit conversion
       with one half-to-even rounding, quote provenance in the summary,

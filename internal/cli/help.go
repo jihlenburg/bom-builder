@@ -215,7 +215,7 @@ Example:
     [--live] [--deadline <duration>] [--pretty]
 
 Example:
-  bom-builder providers check --providers mouser,digikey,ti \
+  bom-builder providers check --providers mouser,digikey,ti,farnell \
     --live --deadline 90s --pretty
 	`,
 	"cache": `Usage:
@@ -240,7 +240,7 @@ expired entries; and ` + "`off`" + ` bypasses SQLite.
   bom-builder cache status [--cache-db <path>] [--pretty]
 	`,
 	"cache list": `Usage:
-  bom-builder cache list [--provider <mouser|digikey|ti>]
+  bom-builder cache list [--provider <mouser|digikey|ti|farnell>]
     [--limit <1..1000>] [--include-stale] [--cache-db <path>] [--pretty]
 
 Cached provider payloads are never printed; this command returns safe identity,

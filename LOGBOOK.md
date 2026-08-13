@@ -1,5 +1,65 @@
 # Logbook
 
+## 2026-08-13 (Farnell adapter, FX-ranked selection, diacritic folding)
+
+- Added the `farnell` adapter over the element14 Product Search API: one
+  credentialed REST endpoint serving the Farnell, Newark, and element14
+  storefronts. The configured store decides everything regional.
+  `FARNELL_STORE_ID` (default `de.farnell.com`) selects the catalog, and
+  because the API returns prices as bare JSON numbers with no currency
+  field, a built-in store-to-currency table supplies the label; a store
+  outside that table stays unconfigured unless `FARNELL_PRICE_CURRENCY`
+  names the ISO 4217 code. Price text decodes as `json.Number` and reaches
+  `money.Parse` verbatim, so no price passes through binary floating
+  point. Exact `manuPartNum:` search runs first, with a review-gated
+  `any:` keyword fallback. The status ladder mirrors Mouser and fails
+  closed: a missing stock level is `stock_unknown` rather than zero,
+  insufficient stock stays `shortage`, and a discontinued product without
+  stock is `unavailable`/`NOT_ORDERABLE`. The key travels in the query
+  string, so transport errors are replaced with generic text and provider
+  messages are redacted; authentication failures surface the Mashery
+  gateway headers, which carry the actionable cause while the body is a
+  bare HTML fragment. Registration was one adapter package plus one
+  `Definition` in the provider registry, exactly as that file promises,
+  plus its documented checklist (error-kind mapping, cache adapter
+  version `farnell-normalized-v1` with a store/currency context hash,
+  restricted `.env` endpoint key, schema enums, help/README/TUI text).
+
+- Cross-currency plans are now ranked instead of refused. Until today a
+  line with EUR and USD safe offers collapsed to
+  `CURRENCY_CONVERSION_REQUIRED` even when the FX layer could price both.
+  `MultiResolver` accepts the same `CurrencyConversion` the totals use and
+  compares plans by their value in the target currency, so the genuinely
+  cheapest offer wins; the selected plan keeps the currency the provider
+  charges. Plans that already share a currency are compared as they are
+  and never need a quote. Without `--currency` the old fail-closed
+  behavior stands, and a plan the quotes cannot cover fails the line with
+  `FX_CONVERSION_FAILED` rather than leaving one offer unexamined while
+  the rest compete.
+
+- Mouser manufacturer matching folds Latin diacritics to ASCII. A BOM
+  spelling "Wurth Elektronik" correctly with an umlaut drew "Found 0
+  matching manufacturers" from the v2 API, which indexes the ASCII form,
+  and a stocked part read as a false shortage (74439358220, 323 in stock).
+  The canonical space is ASCII on both sides now, "elektronik" joins the
+  corporate-word drop list, the old wurth alias is gone, and the outbound
+  API name is folded too.
+
+- Contract repair found while registering the provider: the provider-name
+  enums in the published schemas had drifted from the code. `microchip`
+  shipped on 2026-07-31 without ever reaching five of them, so a validated
+  `--providers microchip` run failed its own contract. All enums now list
+  every provider with a pricing runtime, and a new schemas meta-test
+  derives that set from the registry, so the next adapter cannot register
+  without appearing in the contracts. Removed adapters stay listed in the
+  durable-data enums (cache, resolutions) as before.
+
+- Live status: the element14 gateway rejects the configured key with
+  Account Inactive (ERR_403_DEVELOPER_INACTIVE), so the partner portal has
+  not activated the account yet. Live verification of a real lookup stays
+  open in TODO; everything else is covered by fixture-driven tests and
+  `make check` passes.
+
 ## 2026-08-10 (third-party readiness, v3.0.0)
 
 - Prepared the first public release. CI gained a `windows-latest` job that

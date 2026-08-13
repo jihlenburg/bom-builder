@@ -11,6 +11,7 @@ import (
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
 	"github.com/jihlenburg/bom-builder/internal/provider/digikey"
+	"github.com/jihlenburg/bom-builder/internal/provider/farnell"
 	"github.com/jihlenburg/bom-builder/internal/provider/microchip"
 	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
 	"github.com/jihlenburg/bom-builder/internal/provider/ti"
@@ -97,6 +98,58 @@ func checkMicrochip(
 	resultCount := len(products)
 	capability.Details.ResultCount = &resultCount
 	capability.Details.MatchedPartNumber = products[0].PartNumber
+	return capability
+}
+
+func checkFarnell(
+	ctx context.Context,
+	capability contract.ProviderCapability,
+) contract.ProviderCapability {
+	capability.Live = true
+	if !capability.Configured {
+		capability.Status = "failed"
+		capability.ErrorCode = "NOT_CONFIGURED"
+		capability.ErrorMessage = "Farnell API credentials are not configured"
+		return capability
+	}
+	client, err := farnell.NewFromEnvironment()
+	if err != nil {
+		capability.Status = "failed"
+		capability.ErrorCode = "CONFIGURATION_ERROR"
+		capability.ErrorMessage = err.Error()
+		return capability
+	}
+	started := time.Now()
+	products, err := client.Search(ctx, "RC0402FR-0710KL", true)
+	latency := time.Since(started).Milliseconds()
+	capability.LatencyMS = &latency
+	capability.RequestCount = client.RequestCount()
+	if err != nil {
+		capability.Status = "failed"
+		capability.ErrorCode = providerErrorCode(err)
+		capability.ErrorMessage = err.Error()
+		return capability
+	}
+	if len(products) == 0 {
+		capability.Status = "failed"
+		capability.ErrorCode = "EMPTY_RESULT"
+		capability.ErrorMessage = "representative Farnell search returned no products"
+		return capability
+	}
+	if !strings.EqualFold(
+		products[0].TranslatedManufacturerPartNumber,
+		"RC0402FR-0710KL",
+	) {
+		capability.Status = "failed"
+		capability.ErrorCode = "UNEXPECTED_RESULT"
+		capability.ErrorMessage = "representative Farnell search returned an unexpected part"
+		return capability
+	}
+	capability.Status = "ok"
+	resultCount := len(products)
+	capability.Details.ResultCount = &resultCount
+	capability.Details.MatchedPartNumber = products[0].TranslatedManufacturerPartNumber
+	capability.Details.Currency = client.Currency()
 	return capability
 }
 
@@ -289,6 +342,10 @@ func providerErrorCode(err error) string {
 	var microchipError *microchip.Error
 	if errors.As(err, &microchipError) {
 		return strings.ToUpper(microchipError.Kind)
+	}
+	var farnellError *farnell.Error
+	if errors.As(err, &farnellError) {
+		return strings.ToUpper(farnellError.Kind)
 	}
 	return "PROVIDER_ERROR"
 }

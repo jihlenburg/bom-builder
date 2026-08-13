@@ -18,6 +18,8 @@ func TestDiscoverReportsPresenceWithoutCredentialValues(t *testing.T) {
 	t.Setenv("TI_STORE_API_KEY", "ti-key-secret")
 	t.Setenv("TI_STORE_API_SECRET", "ti-api-secret")
 	t.Setenv("TI_STORE_PRICE_CURRENCY", "EUR")
+	t.Setenv("FARNELL_API_KEY", "farnell-secret")
+	t.Setenv("FARNELL_STORE_ID", "de.farnell.com")
 	t.Setenv("OPENAI_API_KEY", "openai-secret")
 
 	discovery := Discover()
@@ -34,6 +36,7 @@ func TestDiscoverReportsPresenceWithoutCredentialValues(t *testing.T) {
 		"account-id-secret",
 		"ti-key-secret",
 		"ti-api-secret",
+		"farnell-secret",
 		"openai-secret",
 	} {
 		if strings.Contains(text, secret) {
@@ -61,9 +64,35 @@ func TestDiscoverReportsPresenceWithoutCredentialValues(t *testing.T) {
 		ti.Details.Currency != "EUR" {
 		t.Fatalf("TI should be advertised as ready: %#v", ti)
 	}
-	microchip := discovery.Providers[3]
+	farnell := discovery.Providers[3]
+	if !farnell.Implemented || !farnell.Configured ||
+		farnell.Status != "ready" ||
+		farnell.Details.Implementation != "native_go" ||
+		farnell.Details.Currency != "EUR" {
+		t.Fatalf("Farnell should be advertised as ready with the store currency: %#v", farnell)
+	}
+	microchip := discovery.Providers[4]
 	if !microchip.Implemented || microchip.Kind != "manufacturer" ||
 		microchip.Status != "ready" {
 		t.Fatalf("Microchip should be advertised as a ready manufacturer source: %#v", microchip)
 	}
+}
+
+func TestDiscoverReportsFarnellUnconfiguredWithoutKey(t *testing.T) {
+	// The store implies the price currency, so an unset key must read as
+	// unconfigured rather than silently pricing against a default store.
+	t.Setenv("FARNELL_API_KEY", "")
+	t.Setenv("FARNELL_STORE_ID", "")
+	t.Setenv("FARNELL_PRICE_CURRENCY", "")
+	for _, capability := range Discover().Providers {
+		if capability.Name != "farnell" {
+			continue
+		}
+		if !capability.Implemented || capability.Configured ||
+			capability.Status != "unconfigured" {
+			t.Fatalf("unexpected unconfigured Farnell capability: %#v", capability)
+		}
+		return
+	}
+	t.Fatal("Farnell capability is missing from discovery")
 }

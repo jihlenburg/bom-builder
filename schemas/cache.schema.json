@@ -82,7 +82,7 @@
       "properties": {
         "provider": {
           "description": "Adapter that produced the entry. nxp appears only in databases written before the NXP adapter was removed.",
-          "enum": ["mouser", "digikey", "ti", "nxp"]
+          "enum": ["mouser", "digikey", "ti", "farnell", "microchip", "nxp"]
         },
         "key": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "part_number": {"type": "string", "minLength": 1},

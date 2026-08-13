@@ -58,3 +58,10 @@
       the tag-triggered release workflow (six-platform archives plus
       SHA256SUMS), install and API-key documentation, interface-stability
       policy, CONTRIBUTING.md, SECURITY.md, and the v3.0.0 release
+- [x] Add the Farnell (element14) distributor adapter with store-implied
+      currency, registered through the provider registry, plus a schema
+      meta-test that pins every provider enum to that registry
+- [x] Rank cross-currency plans with the FX layer instead of refusing the
+      comparison, and fold diacritics in Mouser manufacturer matching
+- [ ] Live-verify the Farnell adapter after element14 activates the
+      partner API key

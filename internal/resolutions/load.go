@@ -156,7 +156,7 @@ func validateReplacementProvider(replacement Replacement) error {
 	// are durable records, and rejecting the value would make previously
 	// stored approvals unreadable as corrupt. An nxp pin simply never
 	// matches an offer anymore.
-	case "", "mouser", "digikey", "ti", "nxp", "microchip":
+	case "", "mouser", "digikey", "ti", "nxp", "microchip", "farnell":
 	default:
 		return fmt.Errorf(
 			"replacement.provider %q has no native adapter",

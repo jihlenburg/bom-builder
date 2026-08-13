@@ -28,6 +28,7 @@ var restrictedDotEnvKeys = map[string]bool{
 	"BOM_BUILDER_TI_PRODUCTS_URL":        true,
 	"BOM_BUILDER_TI_TOKEN_URL":           true,
 	"BOM_BUILDER_MICROCHIP_PRODUCTS_URL": true,
+	"BOM_BUILDER_FARNELL_API_URL":        true,
 	"BOM_BUILDER_ECB_URL":                true,
 	"BOM_BUILDER_CACHE_DB":               true,
 	"BOM_BUILDER_RESOLUTIONS_DB":         true,

@@ -34,19 +34,19 @@ func TestRegistryDefinitionsAreCompleteAndUnique(t *testing.T) {
 }
 
 func TestRegistryGroupings(t *testing.T) {
-	if fmt.Sprint(DistributorNames()) != "[mouser digikey ti]" {
+	if fmt.Sprint(DistributorNames()) != "[mouser digikey ti farnell]" {
 		t.Fatalf("distributors = %v", DistributorNames())
 	}
 	if fmt.Sprint(ManufacturerNames()) != "[microchip]" {
 		t.Fatalf("manufacturers = %v", ManufacturerNames())
 	}
-	if fmt.Sprint(AutoSelectableNames()) != "[mouser digikey ti]" {
+	if fmt.Sprint(AutoSelectableNames()) != "[mouser digikey ti farnell]" {
 		t.Fatalf("auto-selectable = %v", AutoSelectableNames())
 	}
-	if fmt.Sprint(PricingProviderNames()) != "[mouser digikey ti microchip]" {
+	if fmt.Sprint(PricingProviderNames()) != "[mouser digikey ti farnell microchip]" {
 		t.Fatalf("pricing providers = %v", PricingProviderNames())
 	}
-	if fmt.Sprint(AllNames()) != "[digikey ecb microchip mouser openai ti]" {
+	if fmt.Sprint(AllNames()) != "[digikey ecb farnell microchip mouser openai ti]" {
 		t.Fatalf("all names = %v", AllNames())
 	}
 }

@@ -15,7 +15,7 @@ Latest release: `v3.0.1`
   the full test suite runs on Linux and Windows in CI
 - Machine-readable capability and schema discovery; stable JSON stdout and
   process exit codes
-- Live Mouser, Digi-Key, and TI Store sourcing: lookup, quantity pricing,
+- Live Mouser, Digi-Key, TI Store, and Farnell sourcing: lookup, quantity pricing,
   stock-aware purchase plans, health checks, and multi-provider comparison
   with every normalized offer retained in JSON
 - Exact six-place decimal prices; totals in a chosen currency via dated ECB
@@ -94,7 +94,7 @@ separate workflow after passing the same gate.
 ```bash
 ./bin/bom-builder capabilities --full --pretty
 ./bin/bom-builder providers list --pretty
-./bin/bom-builder providers check --providers mouser,digikey,ti --live --pretty
+./bin/bom-builder providers check --providers mouser,digikey,ti,farnell --live --pretty
 ./bin/bom-builder schema input --pretty
 ./bin/bom-builder help documents
 ```
@@ -125,7 +125,7 @@ trailing JSON values, and oversized input documents are rejected.
 ./bin/bom-builder price examples/example-power-supply.json \
   --units 100 \
   --attrition 0.02 \
-  --providers mouser,digikey,ti \
+  --providers mouser,digikey,ti,farnell \
   --pretty
 ```
 
@@ -146,16 +146,29 @@ Every provider is declared once in an in-code registry
 selection, and capability lists all derive from it, so adding the next
 distributor is one adapter package plus one registry entry.
 
+Farnell lookups use the element14 Product Search API. `FARNELL_STORE_ID`
+selects the regional storefront (default `de.farnell.com`), and that store
+decides the price currency: the API returns bare numbers with no currency
+field, so the adapter carries a table of known stores and their currencies.
+For a store outside that table, `FARNELL_PRICE_CURRENCY` must name the ISO
+4217 code or the provider stays unconfigured rather than guessing. The same
+key works against the Farnell, Newark, and element14 storefronts.
+
 TI direct-store lookups are automatically skipped for non-TI manufacturers.
 Known non-active lifecycle states and generic-to-orderable part resolutions
 remain review-required; stock and TI Store order limits must both cover the
 purchase plan before it can be selected.
 
 When more than one provider is selected, each normalized candidate is returned
-in `parts[].offers`, while `parts[].offer` is the chosen safe plan. Plans in
-different currencies are never compared for selection, and without an explicit
-conversion target the summary total exists only when every selected plan
-already shares one currency.
+in `parts[].offers`, while `parts[].offer` is the chosen safe plan. Plans that
+already share a currency are compared directly. Plans in different currencies
+are compared only with `--currency <ISO>`, which ranks them by their value in
+that target using the same dated ECB quotes that convert the totals; the
+winning plan keeps the currency the provider actually charges. Without a
+conversion target, a mixed-currency line reports
+`CURRENCY_CONVERSION_REQUIRED` instead of guessing, and a plan the quotes
+cannot cover fails the line with `FX_CONVERSION_FAILED` rather than letting
+an unconvertible offer go unexamined.
 
 ## Currency conversion
 

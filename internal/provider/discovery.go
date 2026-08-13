@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
+	"github.com/jihlenburg/bom-builder/internal/provider/farnell"
 )
 
 // Discover returns provider configuration facts without contacting a network.
@@ -103,6 +104,33 @@ func microchipCapability() contract.ProviderCapability {
 			Implementation:         "native_go",
 			AuthenticationRequired: boolPointer(false),
 		},
+	}
+	return capability
+}
+
+func farnellCapability() contract.ProviderCapability {
+	// The element14 API returns prices without a currency field, so the
+	// regional store implies it. A store the adapter cannot price in a
+	// known currency is not configured until FARNELL_PRICE_CURRENCY says
+	// which one applies.
+	storeID := strings.ToLower(envDefault("FARNELL_STORE_ID", farnell.DefaultStoreID))
+	currency := strings.ToUpper(strings.TrimSpace(os.Getenv("FARNELL_PRICE_CURRENCY")))
+	if currency == "" {
+		currency = farnell.StoreCurrency(storeID)
+	}
+	capability := distributorCapability(
+		"farnell",
+		envSet("FARNELL_API_KEY") && currency != "",
+		contract.ProviderDetails{
+			Implementation: "native_go",
+			Currency:       currency,
+		},
+	)
+	capability.Implemented = true
+	if capability.Configured {
+		capability.Status = "ready"
+	} else {
+		capability.Status = "unconfigured"
 	}
 	return capability
 }

@@ -11,7 +11,82 @@ import (
 	"testing"
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
+	"github.com/jihlenburg/bom-builder/internal/provider"
 )
+
+func TestSchemaProviderEnumsCoverEveryRegisteredAdapter(t *testing.T) {
+	t.Parallel()
+	// Every provider with a pricing runtime can appear as a provider
+	// name in output, cache, and resolutions documents: in run metadata,
+	// on an offer, on a document link, as the selected provider, and in
+	// a stored approval. An enum that omits one publishes a contract the
+	// tool itself violates, which is how `--providers microchip` came to
+	// fail its own schema after the adapter shipped.
+	//
+	// Extra names are allowed and deliberate: a removed adapter stays
+	// listed so durable stored data keeps decoding (see the nxp note in
+	// cache.schema.json).
+	required := provider.PricingProviderNames()
+	if len(required) < 2 {
+		t.Fatalf("implausible pricing-provider registry: %v", required)
+	}
+	for _, target := range []string{"output", "cache", "resolutions"} {
+		document, err := Get(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema any
+		if err := json.Unmarshal(document, &schema); err != nil {
+			t.Fatal(err)
+		}
+		enums := 0
+		var walk func(path string, node any)
+		walk = func(path string, node any) {
+			switch typed := node.(type) {
+			case map[string]any:
+				if names, isProviderEnum := providerEnum(typed); isProviderEnum {
+					enums++
+					for _, name := range required {
+						if !names[name] {
+							t.Errorf("%s%s enum is missing %q", target, path, name)
+						}
+					}
+				}
+				for key, child := range typed {
+					walk(path+"/"+key, child)
+				}
+			case []any:
+				for index, child := range typed {
+					walk(fmt.Sprintf("%s[%d]", path, index), child)
+				}
+			}
+		}
+		walk("", schema)
+		if enums == 0 {
+			t.Fatalf("%s schema contains no provider-name enum", target)
+		}
+	}
+}
+
+// providerEnum recognizes a provider-name enum by its anchor member.
+// Every provider list in the published contracts has named mouser since
+// the first version, which distinguishes them from unrelated string
+// enums such as status or kind.
+func providerEnum(node map[string]any) (map[string]bool, bool) {
+	entries, ok := node["enum"].([]any)
+	if !ok {
+		return nil, false
+	}
+	names := map[string]bool{}
+	for _, entry := range entries {
+		name, isString := entry.(string)
+		if !isString {
+			return nil, false
+		}
+		names[name] = true
+	}
+	return names, names["mouser"]
+}
 
 func TestEmbeddedSchemasAreValid(t *testing.T) {
 	for _, target := range []string{"input", "alternatives", "cache", "output", "providers"} {

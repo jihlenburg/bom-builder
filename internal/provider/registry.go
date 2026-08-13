@@ -11,6 +11,7 @@ import (
 
 	"github.com/jihlenburg/bom-builder/internal/contract"
 	"github.com/jihlenburg/bom-builder/internal/provider/digikey"
+	"github.com/jihlenburg/bom-builder/internal/provider/farnell"
 	"github.com/jihlenburg/bom-builder/internal/provider/microchip"
 	"github.com/jihlenburg/bom-builder/internal/provider/mouser"
 	"github.com/jihlenburg/bom-builder/internal/provider/ti"
@@ -124,6 +125,28 @@ func definitions() []Definition {
 			},
 			Capability: tiCapability,
 			LiveCheck:  checkTI,
+		},
+		{
+			Name:       "farnell",
+			Kind:       "distributor",
+			AutoSelect: true,
+			NewRuntime: func() (*Runtime, error) {
+				client, err := farnell.NewFromEnvironment()
+				if err != nil {
+					return nil, err
+				}
+				resolver, err := farnell.NewResolver(client)
+				if err != nil {
+					return nil, &internalRuntimeError{cause: err}
+				}
+				return &Runtime{
+					Name:         "farnell",
+					Resolver:     resolver,
+					RequestCount: client.RequestCount,
+				}, nil
+			},
+			Capability: farnellCapability,
+			LiveCheck:  checkFarnell,
 		},
 		{
 			Name: "microchip",

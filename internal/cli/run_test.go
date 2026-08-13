@@ -476,7 +476,9 @@ func TestLookupCacheReusesNormalizedResultWithoutCredentials(t *testing.T) {
 		secondPayload.Run.RequestCount != 0 ||
 		secondPayload.Run.Cache.Policy != "only" ||
 		secondPayload.Run.Cache.Hits != 1 ||
-		secondPayload.Run.Cache.Misses != 2 ||
+		// One hit from the cached Mouser row; every other cache-only
+		// automatic provider (digikey, ti, farnell) misses.
+		secondPayload.Run.Cache.Misses != 3 ||
 		secondPayload.Run.Cache.ReusedSourceRequests != 1 ||
 		len(secondPayload.Parts) != 1 ||
 		secondPayload.Parts[0].Status != "priced" {

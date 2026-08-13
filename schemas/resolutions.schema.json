@@ -56,7 +56,7 @@
           "maxLength": 40
         },
         "provider": {
-          "enum": ["mouser", "digikey", "ti", "nxp", "microchip"]
+          "enum": ["mouser", "digikey", "ti", "farnell", "nxp", "microchip"]
         },
         "provider_sku": {
           "type": "string",

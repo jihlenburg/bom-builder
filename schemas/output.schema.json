@@ -29,7 +29,7 @@
             "type": "object",
             "required": ["name", "request_count"],
             "properties": {
-              "name": {"enum": ["mouser", "digikey", "ti"]},
+              "name": {"enum": ["mouser", "digikey", "ti", "farnell", "microchip"]},
               "request_count": {"type": "integer", "minimum": 0}
             }
           }
@@ -204,7 +204,7 @@
       ],
       "properties": {
         "kind": {"enum": ["datasheet", "product_page"]},
-        "provider": {"enum": ["mouser", "digikey", "ti"]},
+        "provider": {"enum": ["mouser", "digikey", "ti", "farnell", "microchip"]},
         "url": {"type": "string", "format": "uri"},
         "manufacturer_part_number": {"type": "string"},
         "preferred": {"type": "boolean"},
@@ -323,7 +323,7 @@
           ]
         },
         "selected_provider": {
-          "enum": ["mouser", "digikey", "ti"]
+          "enum": ["mouser", "digikey", "ti", "farnell", "microchip"]
         },
         "selected_distributor_part_number": {"type": "string"},
         "offer": {"$ref": "#/$defs/offer"},
@@ -360,7 +360,7 @@
         "replacement_manufacturer": {"type": "string"},
         "replacement_part_number": {"type": "string"},
         "provider": {
-          "enum": ["mouser", "digikey", "ti", "nxp", "microchip"]
+          "enum": ["mouser", "digikey", "ti", "farnell", "nxp", "microchip"]
         },
         "provider_sku": {"type": "string"},
         "review_lifted": {"type": "boolean"}
@@ -375,7 +375,7 @@
         "required_quantity"
       ],
       "properties": {
-        "provider": {"enum": ["mouser", "digikey", "ti"]},
+        "provider": {"enum": ["mouser", "digikey", "ti", "farnell", "microchip"]},
         "distributor_part_number": {"type": "string"},
         "manufacturer_part_number": {"type": "string"},
         "manufacturer": {"type": "string"},
