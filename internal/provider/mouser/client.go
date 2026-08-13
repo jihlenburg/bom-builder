@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	defaultEndpoint = "https://api.mouser.com/api/v2/search/partnumberandmanufacturer"
+	defaultEndpoint = "https://api.mouser.com/api/v2/search/partnumber"
 	maxResponseSize = 8 * 1024 * 1024
 )
 
@@ -142,15 +142,20 @@ func (client *Client) RequestCount() int {
 	return client.requestCount
 }
 
-// Search performs an official v2 part-number-and-manufacturer endpoint search.
-// The manufacturer is deliberately filtered locally because Mouser's optional
-// manufacturerName parameter requires an exact catalog spelling.
+// Search performs an official v2 part-number endpoint search. The manufacturer
+// is filtered locally (resolver.filterCandidates) and is deliberately NOT sent
+// to the API: the partnumberandmanufacturer endpoint validates manufacturerName
+// against a catalog list that rejects names its own results carry — 2026-08-13,
+// "NXP Semiconductors" and "Infineon Technologies" both returned "Found 0
+// matching manufacturers" while the plain part-number search returned the same
+// spelling with stock. The parameter is accepted for interface compatibility.
 func (client *Client) Search(
 	ctx context.Context,
 	partNumber string,
 	manufacturer string,
 	exact bool,
 ) ([]Part, error) {
+	_ = manufacturer
 	partNumber = strings.TrimSpace(partNumber)
 	if len(partNumber) < 3 || len(partNumber) > 40 {
 		return nil, &Error{
@@ -164,9 +169,8 @@ func (client *Client) Search(
 	}
 	body, err := json.Marshal(searchRequestRoot{
 		Request: searchRequest{
-			ManufacturerName: strings.TrimSpace(manufacturer),
-			PartNumber:       partNumber,
-			SearchOption:     searchOption,
+			PartNumber:   partNumber,
+			SearchOption: searchOption,
 		},
 	})
 	if err != nil {
@@ -393,14 +397,13 @@ func uniqueNonEmpty(values []string) []string {
 }
 
 type searchRequestRoot struct {
-	Request searchRequest `json:"SearchByPartMfrNameRequest"`
+	Request searchRequest `json:"SearchByPartRequest"`
 }
 
 type searchRequest struct {
-	ManufacturerName string `json:"manufacturerName"`
-	PartNumber       string `json:"mouserPartNumber"`
-	SearchOption     string `json:"partSearchOptions"`
-	PaysDuties       bool   `json:"mouserPaysCustomsAndDuties"`
+	PartNumber   string `json:"mouserPartNumber"`
+	SearchOption string `json:"partSearchOptions"`
+	PaysDuties   bool   `json:"mouserPaysCustomsAndDuties"`
 }
 
 type searchResponseRoot struct {

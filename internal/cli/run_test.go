@@ -1250,9 +1250,8 @@ func alternativesMouserServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var input struct {
 			Search struct {
-				Manufacturer string `json:"manufacturerName"`
-				PartNumber   string `json:"mouserPartNumber"`
-			} `json:"SearchByPartMfrNameRequest"`
+				PartNumber string `json:"mouserPartNumber"`
+			} `json:"SearchByPartRequest"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 			t.Error(err)
@@ -1260,6 +1259,13 @@ func alternativesMouserServer(t *testing.T) *httptest.Server {
 		stock := "5000"
 		if input.Search.PartNumber == "ORIGINAL10K" {
 			stock = "0"
+		}
+		// The catalog owns the manufacturer name: the request no longer
+		// carries one, so this stub answers like the real part-number
+		// endpoint and the resolver filters by manufacturer locally.
+		manufacturer := "Yageo"
+		if input.Search.PartNumber == "ALT10K" {
+			manufacturer = "Vishay"
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(
@@ -1275,7 +1281,7 @@ func alternativesMouserServer(t *testing.T) *httptest.Server {
 				`"PriceBreaks":[{"Quantity":1,"Price":"0.10","Currency":"EUR"}]`+
 				`}]}}`,
 			stock,
-			input.Search.Manufacturer,
+			manufacturer,
 			input.Search.PartNumber,
 			"TEST-"+input.Search.PartNumber,
 		)

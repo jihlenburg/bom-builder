@@ -63,5 +63,8 @@
       meta-test that pins every provider enum to that registry
 - [x] Rank cross-currency plans with the FX layer instead of refusing the
       comparison, and fold diacritics in Mouser manufacturer matching
+- [x] Fix Mouser search: the plain part-number endpoint with the
+      manufacturer filtered locally, so catalog manufacturer-list
+      rejections can no longer drop a stocked part
 - [ ] Live-verify the Farnell adapter after element14 activates the
       partner API key

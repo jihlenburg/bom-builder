@@ -86,7 +86,11 @@ func DefaultPath() (string, error) {
 func AdapterVersion(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "mouser":
-		return "mouser-normalized-v1"
+		// v2: search moved from the partnumberandmanufacturer endpoint to
+		// the plain partnumber endpoint; the manufacturer filter is local
+		// only. v1 entries can carry false not_found for parts whose own
+		// catalog manufacturer name that endpoint refused (2026-08-13).
+		return "mouser-normalized-v2"
 	case "digikey":
 		// v2: stock now sourced from ProductDetails variations instead
 		// of the pricing endpoint's unpopulated QuantityAvailable —

@@ -1,5 +1,38 @@
 # Logbook
 
+## 2026-08-13 (Mouser: part-number search, manufacturer filtered locally)
+
+- **Defect.** A 250-unit GW300 costing run reported NXP `NCJ3310AHN/0J`
+  as `not_found` while Mouser held 5848 pieces at EUR 2.26/250. The cause
+  was the search endpoint, not the catalog: `Search` posted
+  `SearchByPartMfrNameRequest` to `/api/v2/search/partnumberandmanufacturer`,
+  which validates `manufacturerName` against a manufacturer list that
+  rejects names its own results carry. Probing the live API proved it:
+  "NXP Semiconductors" and "Infineon Technologies" (exactly the strings
+  the adapter maps to, and exactly the strings Mouser returns in
+  `Manufacturer`) both answered "Found 0 matching manufacturers", while
+  the plain part-number search returned the parts with stock and prices.
+  No alias table can fix this: the spelling was already correct.
+- **Fix.** `Search` now posts `SearchByPartRequest` to
+  `/api/v2/search/partnumber` and never sends a manufacturer. This is
+  what the function comment already claimed ("the manufacturer is
+  deliberately filtered locally") and what `filterCandidates` already
+  did through `manufacturersMatch`. The API-side filter was redundancy
+  that could only subtract results. The `manufacturer` parameter stays in
+  the signature for interface compatibility.
+- **Cache.** `AdapterVersion("mouser")` -> `mouser-normalized-v2`: v1
+  entries can carry false `not_found` for exactly the affected parts.
+- **Tests.** The v2-contract test now asserts the new request shape and
+  that `manufacturerName` never reaches the API;
+  `client_partnumber_test.go` pins the regression with a server that
+  reproduces the live rejection for the legacy shape; the alternatives
+  CLI stub answers with a catalog manufacturer instead of echoing the
+  request, matching real endpoint behavior.
+- **Effect on the GW300 run.** Three lines recovered (NCJ3310 plus two
+  Yageo resistors that had failed transiently), and two Infineon lines
+  moved to Mouser at a lower price. Component cost 250 units:
+  EUR 72.29/unit, 85 of 92 lines coverable from stock.
+
 ## 2026-08-13 (Farnell adapter, FX-ranked selection, diacritic folding)
 
 - Added the `farnell` adapter over the element14 Product Search API: one

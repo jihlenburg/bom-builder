@@ -26,11 +26,13 @@ func TestSearchUsesOfficialV2Contract(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		search := body["SearchByPartMfrNameRequest"]
+		search := body["SearchByPartRequest"]
 		if search["mouserPartNumber"] != "RC0402FR-0710KL" ||
-			search["partSearchOptions"] != "Exact" ||
-			search["manufacturerName"] != "Yageo" {
+			search["partSearchOptions"] != "Exact" {
 			t.Errorf("unexpected request: %#v", body)
+		}
+		if _, sent := search["manufacturerName"]; sent {
+			t.Errorf("manufacturerName must not reach the API: %#v", body)
 		}
 		fmt.Fprint(writer, `{"Errors":[],"SearchResults":{"NumberOfResult":1,"Parts":[`+
 			`{"ManufacturerPartNumber":"RC0402FR-0710KL","Manufacturer":"Yageo"}`+
