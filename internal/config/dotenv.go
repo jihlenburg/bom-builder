@@ -13,25 +13,36 @@ import (
 	"strings"
 )
 
-// restrictedDotEnvKeys are configuration keys a checkout-local .env file may
-// never introduce. They redirect authenticated provider traffic to another
-// host, name an executable to launch, or relocate trusted cache state — so a
-// hostile .env inside an untrusted checkout could exfiltrate real API keys
-// from the inherited environment or execute arbitrary code. These overrides
-// must come from the process environment, where only the operator sets them.
-// A .env value for a key that is already exported is inert (the inherited
-// environment always wins) and therefore tolerated.
-var restrictedDotEnvKeys = map[string]bool{
-	"BOM_BUILDER_MOUSER_API_URL":         true,
-	"BOM_BUILDER_DIGIKEY_API_BASE_URL":   true,
-	"BOM_BUILDER_DIGIKEY_TOKEN_URL":      true,
-	"BOM_BUILDER_TI_PRODUCTS_URL":        true,
-	"BOM_BUILDER_TI_TOKEN_URL":           true,
-	"BOM_BUILDER_MICROCHIP_PRODUCTS_URL": true,
-	"BOM_BUILDER_FARNELL_API_URL":        true,
-	"BOM_BUILDER_ECB_URL":                true,
-	"BOM_BUILDER_CACHE_DB":               true,
-	"BOM_BUILDER_RESOLUTIONS_DB":         true,
+// allowedDotEnvKeys are the complete capabilities granted to a
+// checkout-local .env file. Keeping an allowlist is important because Go's
+// default HTTP transport also consumes ambient variables such as HTTPS_PROXY
+// and SSL_CERT_FILE: loading arbitrary names from an untrusted checkout could
+// otherwise redirect authenticated provider traffic or replace its trust
+// roots. Operator-only endpoint and path overrides remain available through
+// the inherited process environment, which always wins below.
+var allowedDotEnvKeys = map[string]bool{
+	"MOUSER_API_KEY":                   true,
+	"MOUSER_API_KEYS":                  true,
+	"BOM_BUILDER_MOUSER_MAX_ATTEMPTS":  true,
+	"DIGIKEY_CLIENT_ID":                true,
+	"DIGIKEY_CLIENT_SECRET":            true,
+	"DIGIKEY_ACCOUNT_ID":               true,
+	"DIGIKEY_LOCALE_SITE":              true,
+	"DIGIKEY_LOCALE_LANGUAGE":          true,
+	"DIGIKEY_LOCALE_CURRENCY":          true,
+	"DIGIKEY_LOCALE_SHIP_TO_COUNTRY":   true,
+	"BOM_BUILDER_DIGIKEY_MAX_ATTEMPTS": true,
+	"TI_STORE_API_KEY":                 true,
+	"TI_STORE_API_SECRET":              true,
+	"TI_STORE_PRICE_CURRENCY":          true,
+	"BOM_BUILDER_TI_MAX_ATTEMPTS":      true,
+	"FARNELL_API_KEY":                  true,
+	"FARNELL_STORE_ID":                 true,
+	"FARNELL_PRICE_CURRENCY":           true,
+	"BOM_BUILDER_FARNELL_MAX_ATTEMPTS": true,
+	"OPENAI_API_KEY":                   true,
+	"BOM_BUILDER_CACHE_POLICY":         true,
+	"BOM_BUILDER_CACHE_TTL":            true,
 }
 
 // LoadDotEnv adds values from path to the environment without overriding
@@ -68,13 +79,8 @@ func LoadDotEnv(path string) error {
 		if _, exists := os.LookupEnv(key); exists {
 			continue
 		}
-		if restrictedDotEnvKeys[key] {
-			return fmt.Errorf(
-				"dotenv line %d: %s must be set in the process environment, not %s"+
-					" (a checkout-local file could redirect authenticated traffic,"+
-					" choose the launched browser, or relocate the lookup cache)",
-				lineNumber, key, path,
-			)
+		if !allowedDotEnvKeys[key] {
+			continue
 		}
 		if err := os.Setenv(key, value); err != nil {
 			return fmt.Errorf("set dotenv value: %w", err)
@@ -119,10 +125,9 @@ func parseLine(line string) (string, string, bool, error) {
 	return key, value, true, nil
 }
 
-// validKey accepts POSIX-portable environment names in either case: lowercase
-// keys are legal and common in real-world .env files, and rejecting them
-// would make one unrelated `flag=1` line brick every command run from that
-// directory.
+// validKey accepts POSIX-portable environment names in either case. Unknown
+// names are ignored by LoadDotEnv, so shared files can contain unrelated
+// settings without expanding bom-builder's checkout-local capabilities.
 func validKey(key string) bool {
 	if key == "" {
 		return false

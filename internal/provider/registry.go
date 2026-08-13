@@ -35,8 +35,8 @@ type Runtime struct {
 //  2. providerErrorCode in health.go (typed error kind mapping).
 //  3. lookupcache.AdapterVersion and lookupcache.ProviderContextHash
 //     (cache identity: version string and non-secret context values).
-//  4. Restricted endpoint-override keys in internal/config/dotenv.go and
-//     the .env.example entries.
+//  4. Credentials/preferences in the internal/config dotenv allowlist and
+//     the .env.example entries. Endpoint overrides remain process-only.
 //  5. Schema enums: providers/output/cache (and resolutions, where REMOVED
 //     providers stay listed so durable stored data keeps decoding).
 //  6. Help text, README, and the interactive/web provider placeholders.

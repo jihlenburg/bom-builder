@@ -300,6 +300,27 @@ func TestResolverKeepsDifferentMPNReviewRequired(t *testing.T) {
 	}
 }
 
+func TestResolverKeepsKnownShortageAheadOfReview(t *testing.T) {
+	t.Parallel()
+	server := resolverServer("10", "ECA-1VHG102-T")
+	defer server.Close()
+	client := testClient(t, server)
+	resolver, _ := NewResolver(client)
+	result, err := resolver.Lookup(context.Background(), procurement.Demand{
+		PartNumber:       "ECA-1VHG102",
+		Manufacturer:     "Panasonic",
+		RequiredQuantity: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "shortage" || result.IssueCode != "INSUFFICIENT_STOCK" ||
+		result.Offer == nil || !result.Offer.ReviewRequired ||
+		result.Offer.SelectedPlan != nil || result.Offer.CandidatePlan == nil {
+		t.Fatalf("review state masked known shortage: %#v", result)
+	}
+}
+
 // resolverServer mirrors live Digi-Key behavior observed 2026-07-30:
 // pricingbyquantity always reports QuantityAvailable 0 (the field is
 // not populated there), while productdetails carries the real product

@@ -1,5 +1,24 @@
 # Logbook
 
+## 2026-08-14 (Code-review remediation: trust and pricing invariants)
+
+- Replaced the checkout-local `.env` denylist with an explicit allowlist of
+  documented credentials and preferences. Unlisted names are ignored, while
+  inherited process variables still win. This closes the ambient Go transport
+  gap through which `HTTPS_PROXY`, `SSL_CERT_FILE`, or `SSL_CERT_DIR` could
+  redirect authenticated requests or replace TLS trust roots.
+- Tightened the purchase invariant from non-negative to strictly positive
+  unit prices. The optimizer now rejects zero prices at its provider-neutral
+  boundary, and the Mouser and Farnell normalizers discard zero-priced rows
+  before planning.
+- Reordered Digi-Key result classification so known shortage or unknown stock
+  remains the primary blocking state for a non-exact match; the offer still
+  carries `review_required` and a candidate plan.
+- Made FX conversion and money-addition failures line-consistent: the affected
+  part becomes `provider_error` with its issue code, and `priced_count` advances
+  only after conversion and accumulation succeed. Focused regressions cover all
+  four repairs.
+
 ## 2026-08-13 (Mouser: part-number search, manufacturer filtered locally)
 
 - **Defect.** A 250-unit GW300 costing run reported NXP `NCJ3310AHN/0J`

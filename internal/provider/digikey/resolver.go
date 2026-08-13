@@ -142,10 +142,6 @@ func (resolver *Resolver) Lookup(
 	result.Offer = &offer
 	result.CandidateCount = 1
 	switch {
-	case !exact:
-		result.Status = "review"
-		result.IssueCode = "REVIEW_REQUIRED"
-		result.IssueMessage = "non-exact Digi-Key manufacturer part number requires engineering review"
 	case !selected.plan.StockVerified:
 		if selected.available == nil {
 			result.Status = "stock_unknown"
@@ -156,6 +152,10 @@ func (resolver *Resolver) Lookup(
 			result.IssueCode = "INSUFFICIENT_STOCK"
 			result.IssueMessage = "Digi-Key stock cannot cover the selected pricing option"
 		}
+	case !exact:
+		result.Status = "review"
+		result.IssueCode = "REVIEW_REQUIRED"
+		result.IssueMessage = "non-exact Digi-Key manufacturer part number requires engineering review"
 	default:
 		result.Status = "priced"
 		offer.SelectedPlan = selected.plan

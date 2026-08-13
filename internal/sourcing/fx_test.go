@@ -145,4 +145,31 @@ func TestSourceWithFXFailsClosedOnUnquotedCurrency(t *testing.T) {
 	if result.ExitCode == 0 {
 		t.Fatal("a failed conversion must not exit 0")
 	}
+	if result.Summary.PricedCount != 1 || result.Summary.ProviderErrors != 1 {
+		t.Fatalf("failed conversion was counted as priced: %+v", result.Summary)
+	}
+	failed := result.Parts[1]
+	if failed.Status != "provider_error" || failed.IssueCode != "FX_CONVERSION_FAILED" {
+		t.Fatalf("failed conversion left a priced line: %#v", failed)
+	}
+}
+
+func TestSourceMarksMoneyOverflowAsLineFailure(t *testing.T) {
+	resolver := plannedResolver{parts: map[string]procurement.SourcedPart{
+		"MAX-PART": pricedPart("EUR", "9223372036854.775807", 1),
+		"ONE-PART": pricedPart("EUR", "0.000001", 1),
+	}}
+	result := Source(
+		context.Background(),
+		resolver,
+		[]procurement.Demand{fxDemand("MAX-PART", 1), fxDemand("ONE-PART", 1)},
+		1,
+	)
+	if result.Summary.PricedCount != 1 || result.Summary.ProviderErrors != 1 {
+		t.Fatalf("overflow was counted as priced: %+v", result.Summary)
+	}
+	failed := result.Parts[1]
+	if failed.Status != "provider_error" || failed.IssueCode != "MONEY_OVERFLOW" {
+		t.Fatalf("overflow left a priced line: %#v", failed)
+	}
 }

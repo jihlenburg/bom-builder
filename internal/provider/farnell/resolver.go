@@ -276,7 +276,7 @@ func normalizePriceBreaks(raw []RawPrice, currency string) []procurement.PriceBr
 	normalized := make([]procurement.PriceBreak, 0, len(raw))
 	for _, priceBreak := range raw {
 		price, err := money.Parse(priceBreak.Cost.String())
-		if err != nil || priceBreak.From < 1 || !validCurrency(currency) {
+		if err != nil || price.Micros() <= 0 || priceBreak.From < 1 || !validCurrency(currency) {
 			continue
 		}
 		normalized = append(normalized, procurement.PriceBreak{

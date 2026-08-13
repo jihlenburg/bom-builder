@@ -440,7 +440,10 @@ interface remains the CLI.
 
 Copy `.env.example` to `.env` and fill in provider credentials. Existing
 process environment variables take precedence, and `.env` parsing never
-evaluates shell syntax.
+evaluates shell syntax. The loader accepts only the credentials and
+preferences listed in `.env.example`; all other names are ignored. This
+prevents a checkout-local file from changing ambient proxy or TLS trust
+settings used by provider clients.
 
 ### Getting provider API keys
 
@@ -467,9 +470,9 @@ was priced under.
 
 Trusted-path and endpoint overrides (`BOM_BUILDER_CACHE_DB`,
 `BOM_BUILDER_RESOLUTIONS_DB`, `BOM_BUILDER_ECB_URL`, and the per-provider
-`*_URL` overrides) are refused from `.env` and must be exported in the
-process environment: a checkout-local file must not be able to redirect
-authenticated traffic or relocate trusted state.
+`*_URL` overrides) are outside the `.env` allowlist and must be exported in
+the process environment. A checkout-local file cannot redirect authenticated
+traffic, replace TLS trust settings, or relocate trusted state.
 
 Run `./bin/bom-builder help` for concise examples, or
 `./bin/bom-builder capabilities --full` for the authoritative machine-readable

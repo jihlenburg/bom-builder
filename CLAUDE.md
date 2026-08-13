@@ -43,7 +43,8 @@ mode and a local web UI over the same engine.
   JSON startup envelope on stdout and then serves until interrupted.
 - `internal/documents/` owns evidence-link discovery and safe PDF retrieval.
 - `internal/config/` owns non-evaluating `.env` loading, including the
-  restricted-key list that keeps trusted-path overrides out of `.env`.
+  explicit allowlist that keeps proxy, TLS, endpoint, and trusted-path
+  overrides out of checkout-local `.env` files.
 - `internal/app/` owns build and version metadata.
 - `schemas/` contains and embeds the versioned public JSON contracts.
 - `examples/` holds runnable example input documents used by the README.

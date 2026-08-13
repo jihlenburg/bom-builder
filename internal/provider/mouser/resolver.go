@@ -285,7 +285,7 @@ func normalizePriceBreaks(raw []RawPriceBreak) []procurement.PriceBreak {
 	for _, priceBreak := range raw {
 		currency := strings.ToUpper(strings.TrimSpace(priceBreak.Currency))
 		price, err := money.Parse(priceBreak.Price)
-		if err != nil || priceBreak.Quantity < 1 || len(currency) != 3 {
+		if err != nil || price.Micros() <= 0 || priceBreak.Quantity < 1 || len(currency) != 3 {
 			continue
 		}
 		normalized = append(normalized, procurement.PriceBreak{

@@ -15,7 +15,8 @@ BOM Builder is a local tool. The areas with security relevance:
 - Credential handling: provider API keys come from the environment or a
   local `.env`; they must never appear in arguments, logs, errors, JSON
   output, or cache entries. `.env` parsing never evaluates shell syntax,
-  and trusted-path/endpoint overrides are refused from `.env`.
+  and an explicit allowlist excludes proxy, TLS, trusted-path, and endpoint
+  overrides from checkout-local files.
 - The local web UI (`bom-builder serve`): loopback-only listener,
   per-session bearer token, loopback Host and Origin enforcement, and a
   strict Content-Security-Policy. Anything that lets a remote origin read

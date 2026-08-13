@@ -71,6 +71,17 @@ func TestResolverDoesNotSelectInsufficientStock(t *testing.T) {
 	}
 }
 
+func TestNormalizePriceBreaksDropsZeroPrices(t *testing.T) {
+	t.Parallel()
+	breaks := normalizePriceBreaks([]RawPriceBreak{
+		{Quantity: 1, Price: "0", Currency: "EUR"},
+		{Quantity: 10, Price: "0.10", Currency: "EUR"},
+	})
+	if len(breaks) != 1 || breaks[0].Quantity != 10 {
+		t.Fatalf("zero price was retained: %#v", breaks)
+	}
+}
+
 func TestResolverKeepsLooseMatchReviewRequired(t *testing.T) {
 	t.Parallel()
 	candidate := pricedPart("5000")

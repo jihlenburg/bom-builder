@@ -89,6 +89,17 @@ func TestResolverUsesStoreCurrencyForPriceBreaks(t *testing.T) {
 	}
 }
 
+func TestNormalizePriceBreaksDropsZeroPrices(t *testing.T) {
+	t.Parallel()
+	breaks := normalizePriceBreaks([]RawPrice{
+		{From: 1, Cost: "0"},
+		{From: 10, Cost: "0.10"},
+	}, "EUR")
+	if len(breaks) != 1 || breaks[0].Quantity != 10 {
+		t.Fatalf("zero price was retained: %#v", breaks)
+	}
+}
+
 func TestResolverDoesNotSelectInsufficientStock(t *testing.T) {
 	t.Parallel()
 	resolver, _ := NewResolver(stubSearcher{exact: []Product{pricedProduct(949)}})

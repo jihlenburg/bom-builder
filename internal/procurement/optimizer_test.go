@@ -65,6 +65,24 @@ func TestOptimizerRejectsPlanBeyondKnownStock(t *testing.T) {
 	}
 }
 
+func TestOptimizerRejectsNonPositiveUnitPrice(t *testing.T) {
+	t.Parallel()
+	stock := 100
+	plan, err := OptimizePurchaseFamilies(10, []PurchaseFamily{{
+		ID:                "invalid_free_offer",
+		AvailableQuantity: &stock,
+		PriceBreaks: []PriceBreak{{
+			Quantity: 1, UnitPrice: decimal(t, "0"), Currency: "EUR",
+		}},
+	}})
+	if err == nil {
+		t.Fatalf("zero unit price was accepted with plan %#v", plan)
+	}
+	if plan != nil {
+		t.Fatalf("invalid price produced a plan: %#v", plan)
+	}
+}
+
 func TestOptimizerBuildsCheaperMixedPlan(t *testing.T) {
 	t.Parallel()
 	stock := 20_000

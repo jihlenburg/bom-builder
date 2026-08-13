@@ -73,8 +73,8 @@ func New(configuration Config) (*Client, error) {
 }
 
 // NewFromEnvironment builds a client from process configuration. The
-// endpoint override is process-environment only; `.env` files may not
-// introduce it (enforced centrally by the dotenv loader).
+// endpoint override is process-environment only; it is outside the central
+// checkout-local dotenv allowlist.
 func NewFromEnvironment() (*Client, error) {
 	return New(Config{
 		ProductsURL: strings.TrimSpace(os.Getenv("BOM_BUILDER_MICROCHIP_PRODUCTS_URL")),

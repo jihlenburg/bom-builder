@@ -283,7 +283,8 @@ one; every change lands in an append-only audit history.
 The request schema is available with ` + "`bom-builder schema resolutions`" + `.
 The database defaults to the per-user configuration directory; override with
 --resolutions-db or the BOM_BUILDER_RESOLUTIONS_DB process environment
-variable (refused from .env, like every trusted-path override).
+variable (outside the checkout-local .env allowlist, like every trusted-path
+override).
 
 Example:
   bom-builder resolutions approve approval.json --pretty

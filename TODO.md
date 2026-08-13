@@ -286,10 +286,10 @@ history (`git show 1647847:CODE_REVIEW_2026-07-31.md`).
       unavailable states
 - [x] Cache: `Put` round-trips through `decodeRow`, refusing entries the
       read path would reject (self-poisoning footgun)
-- [x] `.env` trust model: endpoint/browser/cache-path keys must come from the
-      process environment (refused when a `.env` would introduce them);
-      malformed `.env` now exits 2 under the invoked command; lowercase keys
-      accepted; UTF-8 BOM stripped; unbalanced quotes are explicit errors
+- [x] `.env` trust model: checkout-local files have an explicit credential/
+      preference allowlist; proxy, TLS, endpoint, browser, and cache-path keys
+      are ignored unless inherited from the process environment; malformed
+      files still fail explicitly; UTF-8 BOM and quoting edge cases are tested
 - [x] Optimizer: explicit refusal for cross-currency plan comparison
 - [x] Sourcing: unknown statuses count as INTERNAL_CONTRACT_ERROR; fallback
       path strips leaked SelectedPlans

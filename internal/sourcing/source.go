@@ -105,7 +105,6 @@ func SourceWithFX(
 				result.Parts[len(result.Parts)-1].Status = "provider_error"
 				continue
 			}
-			result.Summary.PricedCount++
 			plan := sourced.Offer.SelectedPlan
 			extended := plan.ExtendedPrice
 			if conversion != nil {
@@ -123,6 +122,9 @@ func SourceWithFX(
 						Details: map[string]any{"part_number": demand.PartNumber},
 					})
 					result.Summary.ProviderErrors++
+					result.Parts[len(result.Parts)-1].Status = "provider_error"
+					result.Parts[len(result.Parts)-1].IssueCode = "FX_CONVERSION_FAILED"
+					result.Parts[len(result.Parts)-1].IssueMessage = convertErr.Error()
 					conversionFailed = true
 					continue
 				}
@@ -132,15 +134,20 @@ func SourceWithFX(
 			} else if !strings.EqualFold(currency, plan.Currency) {
 				mixedCurrency = true
 			}
-			var addErr error
-			total, addErr = total.Add(extended)
+			nextTotal, addErr := total.Add(extended)
 			if addErr != nil {
 				result.Errors = append(result.Errors, contract.Issue{
 					Code:    "MONEY_OVERFLOW",
 					Message: addErr.Error(),
 				})
 				result.Summary.ProviderErrors++
+				result.Parts[len(result.Parts)-1].Status = "provider_error"
+				result.Parts[len(result.Parts)-1].IssueCode = "MONEY_OVERFLOW"
+				result.Parts[len(result.Parts)-1].IssueMessage = addErr.Error()
+				continue
 			}
+			total = nextTotal
+			result.Summary.PricedCount++
 		case "shortage", "stock_unknown", "unavailable":
 			result.Summary.ShortageCount++
 		case "review":

@@ -192,8 +192,8 @@ func New(configuration Config) (*Client, error) {
 }
 
 // NewFromEnvironment reads the credential and non-secret overrides. The
-// endpoint override is process-environment only; `.env` files may not
-// introduce it (enforced centrally by the dotenv loader).
+// endpoint override is process-environment only; it is outside the central
+// checkout-local dotenv allowlist.
 func NewFromEnvironment() (*Client, error) {
 	maxAttempts := 3
 	if configured := strings.TrimSpace(os.Getenv("BOM_BUILDER_FARNELL_MAX_ATTEMPTS")); configured != "" {

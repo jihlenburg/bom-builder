@@ -66,5 +66,8 @@
 - [x] Fix Mouser search: the plain part-number endpoint with the
       manufacturer filtered locally, so catalog manufacturer-list
       rejections can no longer drop a stocked part
+- [x] Remediate the August code review: allowlist checkout-local `.env`
+      capabilities, reject non-positive provider prices, keep Digi-Key stock
+      blockers ahead of review state, and make FX line/summary failures agree
 - [ ] Live-verify the Farnell adapter after element14 activates the
       partner API key

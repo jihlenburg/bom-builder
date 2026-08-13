@@ -218,8 +218,8 @@ func validateFamily(family PurchaseFamily) error {
 		if priceBreak.Quantity < 1 {
 			return errors.New("price-break quantity must be positive")
 		}
-		if priceBreak.UnitPrice.Micros() < 0 {
-			return errors.New("unit price cannot be negative")
+		if priceBreak.UnitPrice.Micros() <= 0 {
+			return errors.New("unit price must be positive")
 		}
 		if !validCurrency(priceBreak.Currency) {
 			return fmt.Errorf("invalid currency %q", priceBreak.Currency)
